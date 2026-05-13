@@ -22,16 +22,33 @@ BEGIN
     BEGIN
         BLOCK "040004b0"
         BEGIN
-            // ProductName must stay literally "ReShade" because FiveM's
-            // graphics-mod loader (rage-graphics-five/ReShadeFixups.cpp)
-            // whitelists only ProductName == "ReShade" or "ENBSeries".
-            // Anything else is rejected on sight. The user-facing brand
-            // is carried by FileDescription / CompanyName / OriginalFilename
-            // and by the runtime UI we ship; ProductName is internal-only
-            // and never printed by the engine.
+            // FiveM's graphics-mod loader (rage-graphics-five/
+            // ReShadeFixups.cpp::IsValidGraphicsLibrary) whitelists
+            // only ProductName == "ReShade" or "ENBSeries". Anything
+            // else is rejected on sight.
+            //
+            // The "ReShade" branch is gated by extra checks: rejects
+            // versions <3.1, ==5.9.0 (heap corruption), and >=5.0
+            // (needs a per-machine ReShade5= override line in
+            // CitizenFX.ini that literally contains the word
+            // "ReShade"). Worse, version <5.9 + nui_useInProcessGpu==
+            // true blocks load entirely, and that ConVar defaults to
+            // true in nui-core/NUIApp.cpp.
+            //
+            // The "ENBSeries" branch is far more permissive: the only
+            // requirements are ProductVersion >= 0.3.8.7 and a
+            // LegalCopyright that does not contain "2019, Boris".
+            // Both trivial to satisfy. So we present as ENBSeries to
+            // the loader, which makes the install a one-shot drop-in
+            // with zero user action and zero "ReShade" string written
+            // to any user-visible config file.
+            //
+            // ProductName is internal-only and never printed in any
+            // log; only the explicit FileDescription / CompanyName /
+            // OriginalFilename / runtime UI strings are user-facing.
             VALUE "CompanyName", "MariusFX"
             VALUE "FileVersion", VERSION_STRING_FILE
-            VALUE "ProductName", "ReShade"
+            VALUE "ProductName", "ENBSeries"
             VALUE "ProductVersion", VERSION_STRING_PRODUCT
             VALUE "LegalCopyright", "Copyright Â© MariusFX. All rights reserved."
 #ifdef RESHADE_FXC

@@ -1,10 +1,10 @@
 #pragma once
 
-#define VERSION_FULL 4.9.9.4
+#define VERSION_FULL 4.9.9.5
 #define VERSION_MAJOR 4
 #define VERSION_MINOR 9
 #define VERSION_REVISION 9
-#define VERSION_BUILD 4
+#define VERSION_BUILD 5
 
-#define VERSION_STRING_FILE "4.9.9.4"
+#define VERSION_STRING_FILE "4.9.9.5"
 #define VERSION_STRING_PRODUCT "4.9.9"
