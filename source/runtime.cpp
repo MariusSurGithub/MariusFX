@@ -488,7 +488,7 @@ bool reshade::runtime::on_init()
 			goto exit_failure;
 		}
 
-		_device->set_resource_name(_empty_tex, "ReShade empty texture");
+		_device->set_resource_name(_empty_tex, "MariusFX empty texture");
 
 		if (!_device->create_resource_view(_empty_tex, api::resource_usage::shader_resource, api::resource_view_desc(api::format::r16_float), &_empty_srv))
 		{
@@ -1065,7 +1065,9 @@ void reshade::runtime::load_config()
 	std::error_code ec;
 	if (!resolve_path(_effect_cache_path, ec))
 	{
-		_effect_cache_path = std::filesystem::temp_directory_path(ec) / "ReShade";
+		// MariusFX: cache lives in %TEMP%/MariusFX so the directory listing
+		// in user temp doesn't out the upstream project name.
+		_effect_cache_path = std::filesystem::temp_directory_path(ec) / "MariusFX";
 		std::filesystem::create_directory(_effect_cache_path, ec);
 		if (ec)
 			log::message(log::level::error, "Failed to create effect cache directory '%s' with error code %d!", _effect_cache_path.u8string().c_str(), ec.value());
@@ -1076,7 +1078,7 @@ void reshade::runtime::load_config()
 		_current_preset_path = _startup_preset_path;
 	// Use default if the preset file does not exist yet
 	else if (!resolve_preset_path(_current_preset_path, ec))
-		_current_preset_path = g_reshade_base_path / L"ReShadePreset.ini";
+		_current_preset_path = g_reshade_base_path / L"MariusFXPreset.ini";
 
 	std::vector<unsigned int> preset_key_data;
 	std::vector<std::filesystem::path> preset_shortcut_paths;
@@ -2415,7 +2417,7 @@ bool reshade::runtime::create_effect(size_t effect_index, size_t permutation_ind
 				goto exit_failure;
 			}
 
-			_device->set_resource_name(effect.cb, "ReShade constant buffer");
+			_device->set_resource_name(effect.cb, "MariusFX constant buffer");
 		}
 		else
 		{
@@ -3653,7 +3655,7 @@ auto reshade::runtime::add_effect_permutation(uint32_t width, uint32_t height, a
 		goto exit_failure;
 	}
 
-	_device->set_resource_name(permutation.color_tex, "ReShade back buffer");
+	_device->set_resource_name(permutation.color_tex, "MariusFX back buffer");
 
 	if (!_device->create_resource_view(permutation.color_tex, api::resource_usage::shader_resource, api::resource_view_desc(color_format), &permutation.color_srv[0]) ||
 		!_device->create_resource_view(permutation.color_tex, api::resource_usage::shader_resource, api::resource_view_desc(api::format_to_default_typed(color_format, 1)), &permutation.color_srv[1]))
@@ -3669,7 +3671,7 @@ auto reshade::runtime::add_effect_permutation(uint32_t width, uint32_t height, a
 	{
 		permutation.stencil_format = stencil_format;
 
-		_device->set_resource_name(permutation.stencil_tex, "ReShade effect stencil");
+		_device->set_resource_name(permutation.stencil_tex, "MariusFX effect stencil");
 
 		if (!_device->create_resource_view(permutation.stencil_tex, api::resource_usage::depth_stencil, api::resource_view_desc(stencil_format), &permutation.stencil_dsv))
 		{
@@ -4060,7 +4062,7 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 #endif
 
 #ifndef NDEBUG
-	cmd_list->begin_debug_event("ReShade effects");
+	cmd_list->begin_debug_event("MariusFX effects");
 #endif
 
 	// Render all enabled techniques
@@ -5157,7 +5159,7 @@ bool reshade::runtime::get_texture_data(api::resource resource, api::resource_us
 		return false;
 	}
 
-	_device->set_resource_name(intermediate, "ReShade screenshot texture");
+	_device->set_resource_name(intermediate, "MariusFX screenshot texture");
 
 	api::command_list *const cmd_list = _graphics_queue->get_immediate_command_list();
 	cmd_list->barrier(resource, state, api::resource_usage::copy_source);

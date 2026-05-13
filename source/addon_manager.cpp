@@ -162,7 +162,7 @@ void reshade::load_addons()
 	{	addon_info &info = addon_loaded_info.emplace_back();
 		info.name = "Generic Depth";
 		info.description = "Automatic depth buffer detection that works in the majority of games.";
-		info.author = "crosire";
+		info.author = "Marius";
 		info.external = false;
 
 		if (std::find(disabled_addons.cbegin(), disabled_addons.cend(), info.name) == disabled_addons.cend())
@@ -175,7 +175,7 @@ void reshade::load_addons()
 	{	addon_info &info = addon_loaded_info.emplace_back();
 		info.name = "Effect Runtime Sync";
 		info.description = "Adds preset synchronization between different effect runtime instances, e.g. to have changes in a desktop window reflect in VR.";
-		info.author = "crosire";
+		info.author = "Marius";
 		info.external = false;
 
 		if (std::find(disabled_addons.cbegin(), disabled_addons.cend(), info.name) == disabled_addons.cend())
@@ -236,7 +236,7 @@ void reshade::load_addons()
 		// Indicate that add-ons exist that could not be loaded because this build of ReShade has only limited add-on functionality
 		addon_all_loaded = false;
 
-		log::message(log::level::warning, "Skipped loading add-on from '%s' because this build of ReShade has only limited add-on functionality.", path.u8string().c_str());
+		log::message(log::level::warning, "Skipped loading add-on from '%s' because this build of MariusFX has only limited add-on functionality.", path.u8string().c_str());
 #else
 		// Avoid loading library again that has already been loaded externally
 		if (const auto it =	std::find_if(addon_loaded_info.cbegin(), addon_loaded_info.cend(),
@@ -513,7 +513,7 @@ bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 		return false; // Disable this add-on
 	}
 
-	reshade::log::message(reshade::log::level::info, "Registered add-on \"%s\" v%hu.%hu.%hu.%hu using ReShade API version %u.", info.name.c_str(), info.version.number.major, info.version.number.minor, info.version.number.build, info.version.number.revision, api_version);
+	reshade::log::message(reshade::log::level::info, "Registered add-on \"%s\" v%hu.%hu.%hu.%hu using MariusFX API version %u.", info.name.c_str(), info.version.number.major, info.version.number.minor, info.version.number.build, info.version.number.revision, api_version);
 
 	reshade::addon_loaded_info.push_back(std::move(info));
 

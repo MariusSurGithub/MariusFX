@@ -4918,7 +4918,7 @@ void reshade::runtime::render_imgui_draw_data(api::command_list *cmd_list, ImDra
 	}
 
 #ifndef NDEBUG
-	cmd_list->begin_debug_event("ReShade overlay");
+	cmd_list->begin_debug_event("MariusFX overlay");
 #endif
 
 	if (ImDrawIdx *idx_dst;
