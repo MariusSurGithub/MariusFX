@@ -10,6 +10,10 @@
 #include "dll_log.hpp"
 #include "com_utils.hpp"
 #include "addon_manager.hpp"
+// MariusFX: BB-diff UI masking integration. The compositing pass needs to
+// know when the host application targets the swapchain BB (to snapshot
+// scene_clean) so each Draw*/OMSetRenderTargets thunk forwards to it.
+#include "../../mariusfx/ui_safe_mask/ui_safe_mask.hpp"
 
 using reshade::d3d11::to_handle;
 
@@ -212,6 +216,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexed(UINT IndexCount, UINT 
 		return;
 #endif
 	_orig->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
+	mariusfx::ui_safe_mask::on_draw(_orig);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
@@ -220,6 +225,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::Draw(UINT VertexCount, UINT StartV
 		return;
 #endif
 	_orig->Draw(VertexCount, StartVertexLocation);
+	mariusfx::ui_safe_mask::on_draw(_orig);
 }
 HRESULT STDMETHODCALLTYPE D3D11DeviceContext::Map(ID3D11Resource *pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags, D3D11_MAPPED_SUBRESOURCE *pMappedResource)
 {
@@ -341,6 +347,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexedInstanced(UINT IndexCou
 		return;
 #endif
 	_orig->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
+	mariusfx::ui_safe_mask::on_draw(_orig);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawInstanced(UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation)
 {
@@ -349,6 +356,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DrawInstanced(UINT VertexCountPerI
 		return;
 #endif
 	_orig->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
+	mariusfx::ui_safe_mask::on_draw(_orig);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::GSSetConstantBuffers(UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppConstantBuffers)
 {
@@ -422,6 +430,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::GSSetSamplers(UINT StartSlot, UINT
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargets(UINT NumViews, ID3D11RenderTargetView *const *ppRenderTargetViews, ID3D11DepthStencilView *pDepthStencilView)
 {
 	_orig->OMSetRenderTargets(NumViews, ppRenderTargetViews, pDepthStencilView);
+	mariusfx::ui_safe_mask::on_omset_rt(_orig, NumViews, ppRenderTargetViews);
 
 #if RESHADE_ADDON
 	if (!reshade::has_addon_event<reshade::addon_event::bind_render_targets_and_depth_stencil>())
@@ -443,6 +452,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargets(UINT NumViews, 
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargetsAndUnorderedAccessViews(UINT NumRTVs, ID3D11RenderTargetView *const *ppRenderTargetViews, ID3D11DepthStencilView *pDepthStencilView, UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView *const *ppUnorderedAccessViews, const UINT *pUAVInitialCounts)
 {
 	_orig->OMSetRenderTargetsAndUnorderedAccessViews(NumRTVs, ppRenderTargetViews, pDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
+	if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)
+		mariusfx::ui_safe_mask::on_omset_rt(_orig, NumRTVs, ppRenderTargetViews);
 
 #if RESHADE_ADDON
 	if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&

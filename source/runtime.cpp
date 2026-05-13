@@ -16,6 +16,10 @@
 #include "input.hpp"
 #include "platform_utils.hpp"
 #include "reshade_api_object_impl.hpp"
+// MariusFX: BB-diff UI masking around the effect chain.
+#include "../mariusfx/ui_safe_mask/ui_safe_mask.hpp"
+#include <d3d11.h>
+#include <dxgi.h>
 #include <set>
 #include <cmath> // std::abs, std::fmod
 #include <cctype> // std::toupper
@@ -738,6 +742,21 @@ void reshade::runtime::on_present()
 	if (_should_save_screenshot && _screenshot_save_before && _effects_enabled && !_effects_rendered_this_frame)
 		save_screenshot("Before");
 
+	// MariusFX: snapshot the BB-with-UI BEFORE any effect runs so the
+	// final compositing pass can restore UI pixels even after effects
+	// mangle the BB. The native handle behind the abstract command_list
+	// in the D3D11 backend is the raw ID3D11DeviceContext*, and the
+	// resource handle is the raw ID3D11Resource*.
+	ID3D11DeviceContext *const native_ctx = reinterpret_cast<ID3D11DeviceContext *>(cmd_list->get_native());
+	ID3D11Resource *const native_bb = reinterpret_cast<ID3D11Resource *>(back_buffer_resource.handle);
+	IDXGISwapChain *const native_sc = reinterpret_cast<IDXGISwapChain *>(_swapchain->get_native());
+	if (mariusfx::ui_safe_mask::enabled() && _back_buffer_resolved == 0 && native_ctx && native_bb)
+	{
+		cmd_list->barrier(back_buffer_resource, api::resource_usage::present, api::resource_usage::copy_source);
+		mariusfx::ui_safe_mask::on_swapchain_present_begin(native_ctx, native_sc, native_bb);
+		cmd_list->barrier(back_buffer_resource, api::resource_usage::copy_source, api::resource_usage::present);
+	}
+
 	if (!is_loading() && !_techniques.empty())
 	{
 		if (_back_buffer_resolved != 0)
@@ -748,9 +767,24 @@ void reshade::runtime::on_present()
 		{
 			cmd_list->barrier(back_buffer_resource, api::resource_usage::present, api::resource_usage::render_target);
 			runtime::render_effects(cmd_list, _back_buffer_targets[back_buffer_index], _back_buffer_targets[back_buffer_index + 1]);
-			cmd_list->barrier(back_buffer_resource, api::resource_usage::render_target, api::resource_usage::present);
+
+			// MariusFX: lerp UI pixels back into the BB now that effects ran.
+			if (mariusfx::ui_safe_mask::enabled() && native_ctx && native_bb)
+			{
+				cmd_list->barrier(back_buffer_resource, api::resource_usage::render_target, api::resource_usage::copy_source);
+				mariusfx::ui_safe_mask::on_after_render_effects(native_ctx, native_sc, native_bb);
+				cmd_list->barrier(back_buffer_resource, api::resource_usage::copy_source, api::resource_usage::present);
+			}
+			else
+			{
+				cmd_list->barrier(back_buffer_resource, api::resource_usage::render_target, api::resource_usage::present);
+			}
 		}
 	}
+
+	// MariusFX: reset per-frame state (snapshot flag + BB draw counter)
+	// so the next frame's first BB-targeted draw triggers a fresh capture.
+	mariusfx::ui_safe_mask::on_present_end();
 
 	if (_should_save_screenshot)
 		save_screenshot(_screenshot_save_before ? "After" : nullptr);
