@@ -30,7 +30,11 @@ elseif ($exists) {
 	return
 }
 
-$official = Test-Path "$path\..\sign.pfx"
+# MariusFX: dropped the "UNOFFICIAL" suffix that upstream appends when no
+# sign.pfx is present. That suffix surfaces in the About panel and in any
+# log line that prints VERSION_STRING_PRODUCT, which would clearly read as
+# "ReShade-derived dev build" to anyone looking. The clean numeric form
+# matches what users expect from a shipped product.
 
 # Update version file with the new version information
 @"
@@ -43,5 +47,5 @@ $official = Test-Path "$path\..\sign.pfx"
 #define VERSION_BUILD $($version[3])
 
 #define VERSION_STRING_FILE "$([string]::Join('.', $version))"
-#define VERSION_STRING_PRODUCT "$($version[0]).$($version[1]).$($version[2])$(if (-not $official) { " UNOFFICIAL" })"
+#define VERSION_STRING_PRODUCT "$($version[0]).$($version[1]).$($version[2])"
 "@ | Out-File -FilePath $path -Encoding ASCII

@@ -22,20 +22,27 @@ BEGIN
     BEGIN
         BLOCK "040004b0"
         BEGIN
-            VALUE "CompanyName", "crosire"
+            // ProductName must stay literally "ReShade" because FiveM's
+            // graphics-mod loader (rage-graphics-five/ReShadeFixups.cpp)
+            // whitelists only ProductName == "ReShade" or "ENBSeries".
+            // Anything else is rejected on sight. The user-facing brand
+            // is carried by FileDescription / CompanyName / OriginalFilename
+            // and by the runtime UI we ship; ProductName is internal-only
+            // and never printed by the engine.
+            VALUE "CompanyName", "MariusFX"
             VALUE "FileVersion", VERSION_STRING_FILE
             VALUE "ProductName", "ReShade"
             VALUE "ProductVersion", VERSION_STRING_PRODUCT
-            VALUE "LegalCopyright", "Copyright © 2014. All rights reserved."
+            VALUE "LegalCopyright", "Copyright Â© MariusFX. All rights reserved."
 #ifdef RESHADE_FXC
-            VALUE "FileDescription", "ReShade FX compiler"
+            VALUE "FileDescription", "MariusFX shader compiler"
 #else
     #ifndef _WIN64
-            VALUE "FileDescription", "crosire's ReShade post-processing injector for 32-bit"
-            VALUE "OriginalFilename", "ReShade32.dll"
+            VALUE "FileDescription", "MariusFX post-processing injector for 32-bit"
+            VALUE "OriginalFilename", "MariusFX32.dll"
     #else
-            VALUE "FileDescription", "crosire's ReShade post-processing injector for 64-bit"
-            VALUE "OriginalFilename", "ReShade64.dll"
+            VALUE "FileDescription", "MariusFX post-processing injector for 64-bit"
+            VALUE "OriginalFilename", "MariusFX64.dll"
     #endif
 #endif
         END

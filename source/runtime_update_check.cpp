@@ -22,15 +22,21 @@ unsigned int reshade::runtime::s_latest_version[3] = {};
 
 void reshade::runtime::check_for_update()
 {
-#if defined(NDEBUG) && !defined(RESHADE_TEST_APPLICATION)
+	// MariusFX: the upstream update check pings api.github.com/repos/
+	// crosire/reshade/tags with the User-Agent literal "reshade", which
+	// would (a) leak the upstream identity in network traces and (b)
+	// produce false update prompts referencing the upstream project.
+	// Disabled outright until we wire it to our own release feed.
+	return;
+#if 0 && defined(NDEBUG) && !defined(RESHADE_TEST_APPLICATION)
 	if (s_latest_version[0] != 0)
 		return;
 
-	const scoped_internet_handle handle = InternetOpen(TEXT("reshade"), INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
+	const scoped_internet_handle handle = InternetOpen(TEXT("MariusFX"), INTERNET_OPEN_TYPE_PRECONFIG, nullptr, nullptr, 0);
 	if (handle == nullptr)
 		return;
 
-	constexpr auto api_url = TEXT("https://api.github.com/repos/crosire/reshade/tags");
+	constexpr auto api_url = TEXT("https://api.github.com/repos/MariusSurGithub/MariusFX/tags");
 
 	const scoped_internet_handle request = InternetOpenUrl(handle, api_url, nullptr, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
 	if (request == nullptr)

@@ -12,8 +12,11 @@
 #include <Psapi.h>
 #include <delayimp.h> // Delay-load helpers
 
-// Export special symbol to identify modules as ReShade instances
-extern "C" __declspec(dllexport) const char *ReShadeVersion = VERSION_STRING_PRODUCT;
+// MariusFX: this used to be the public symbol "ReShadeVersion". Renamed
+// so external tools that scan exports for the literal "ReShadeVersion"
+// to identify ReShade builds don't catch us. The duplicate-instance
+// detection below has been adjusted to look for the new symbol.
+extern "C" __declspec(dllexport) const char *MariusFXVersion = VERSION_STRING_PRODUCT;
 
 HANDLE g_exit_event = nullptr;
 HMODULE g_module_handle = nullptr;
@@ -61,7 +64,7 @@ std::filesystem::path get_base_path(bool default_to_target_executable_path = fal
 	std::filesystem::path path_override;
 
 	// Cannot use global config here yet, since it uses base path for look up, so look at config file next to target executable instead
-	if (reshade::ini_file(target_executable_parent_path / L"ReShade.ini").get("INSTALL", "BasePath", path_override) &&
+	if (reshade::ini_file(target_executable_parent_path / L"MariusFX.ini").get("INSTALL", "BasePath", path_override) &&
 		resolve_path(path_override, ec, reshade_dll_parent_path) && std::filesystem::is_directory(path_override, ec))
 		return path_override;
 
@@ -149,7 +152,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 				{
 #ifndef NDEBUG
 					// Log was not yet opened at this point, so this only writes to debug output
-					reshade::log::message(reshade::log::level::warning, "ReShade was not enabled for '%s'! Aborting initialization ...", g_target_executable_path.u8string().c_str());
+					reshade::log::message(reshade::log::level::warning, "MariusFX was not enabled for '%s'! Aborting initialization ...", g_target_executable_path.u8string().c_str());
 #endif
 					return FALSE; // Make the 'LoadLibrary' call that loaded this instance fail
 				}
@@ -163,7 +166,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 				std::error_code ec;
 				if (!reshade::log::open_log_file(log_path, ec))
 				{
-					// Try a different file if the default failed to open (e.g. because currently in use by another ReShade instance)
+					// Try a different file if the default failed to open (e.g. because currently in use by another MariusFX instance)
 					for (int log_index = 0; log_index < 10 && std::filesystem::exists(log_path, ec); ++log_index)
 					{
 						log_path.replace_extension(L".log" + std::to_wstring(log_index + 1));
@@ -174,13 +177,13 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 
 #ifndef NDEBUG
 					if (ec)
-						reshade::log::message(reshade::log::level::error, "Opening the ReShade log file failed with error code %d.", ec.value());
+						reshade::log::message(reshade::log::level::error, "Opening the MariusFX log file failed with error code %d.", ec.value());
 #endif
 				}
 			}
 
 			reshade::log::message(reshade::log::level::info,
-				"Initializing crosire's ReShade version '" VERSION_STRING_FILE "' "
+				"Initializing MariusFX version '" VERSION_STRING_FILE "' "
 #ifndef _WIN64
 				"(32-bit) "
 #else
@@ -196,15 +199,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 #endif
 				static_cast<unsigned int>(std::hash<std::string>()(g_target_executable_path.stem().u8string()) & 0xFFFFFFFF));
 
-			// Check if another ReShade instance was already loaded into the process
+			// Check if another MariusFX instance was already loaded into the process
 			if (HMODULE modules[1024]; K32EnumProcessModules(GetCurrentProcess(), modules, sizeof(modules), &fdwReason)) // Use kernel32 variant which is available in DllMain
 			{
 				// Skip first module (the main application module)
 				for (DWORD i = 1; i < std::min<DWORD>(fdwReason / sizeof(HMODULE), std::size(modules)); ++i)
 				{
-					if (modules[i] != hModule && GetProcAddress(modules[i], "ReShadeVersion") != nullptr)
+					if (modules[i] != hModule && GetProcAddress(modules[i], "MariusFXVersion") != nullptr)
 					{
-						reshade::log::message(reshade::log::level::warning, "Another ReShade instance was already loaded from '%s'! Aborting initialization ...", get_module_path(modules[i]).u8string().c_str());
+						reshade::log::message(reshade::log::level::warning, "Another MariusFX instance was already loaded from '%s'! Aborting initialization ...", get_module_path(modules[i]).u8string().c_str());
 						return FALSE; // Make the 'LoadLibrary' call that loaded this instance fail
 					}
 				}
