@@ -1,47 +1,85 @@
-ReShade
-=======
+# MariusFX
 
-This is a generic post-processing injector for games and video software. It exposes an automated way to access both frame color and depth information and a custom shader language called ReShade FX to write effects like ambient occlusion, depth of field, color correction and more which work everywhere.
+A modern post-processing injector for **FiveM** with pixel-perfect
+UI masking. HUD, NUI overlays and in-game menus stay completely
+untouched while every effect — bloom, color grading, sharpen,
+sepia, vignette… — runs full quality on the actual scene.
 
-ReShade can optionally load **add-ons**, DLLs that make use of the ReShade API to extend functionality of both ReShade and/or the application ReShade is being applied to. To get started on how to write your own add-on, check out the [API reference](REFERENCE.md).
+## Why MariusFX
 
-The ReShade FX shader compiler contained in this repository is standalone, so can be integrated into other projects as well. Simply add all `source/effect_*.*` files to your project and use it similar to the [fxc example](tools/fxc.cpp).
+Existing post-processing solutions for GTA V / FiveM bleed all
+over the HUD: the minimap glows from bloom, the phone gets
+desaturated by color grading, and the chat box looks washed out.
+MariusFX detects UI pixels at the GPU level via a backbuffer-diff
+mask and lerps them back verbatim after every effect pass — so
+your scene gets the cinematic look while your interface stays
+crisp.
 
-## Building
+## Features
 
-You'll need Visual Studio 2017 or higher to build ReShade. And Python in the PATH environment variable for the `glad` dependency to build.
+- **UI-safe by construction** — every shader runs through a
+  final compositing pass that restores HUD / NUI / RageUI /
+  phone pixels at zero artifact cost
+- **Wide effect support** — sepia, bloom, FXAA, color matrix,
+  film grain, vignette, chromatic aberration, fake HDR,
+  tonemapping, lens flare and more
+- **Live editing** — edit a shader on disk, see it update
+  in-game on the next frame
+- **Per-effect parameter tuning** — sliders for every uniform,
+  with min/max from the shader source
+- **Preset system** — save and load complete configurations
+  per scene / time of day / server
+- **GPU profiling overlay** — see exactly how many ms each
+  effect costs
+- **In-game overlay** — full configuration UI accessible by
+  pressing `Home`, with the GTA camera frozen so you can edit
+  in peace
 
-1. Clone this repository including all Git submodules\
-```git clone --recurse-submodules https://github.com/crosire/reshade```
-2. Open the Visual Studio solution
-3. Select either the `32-bit` or `64-bit` target platform and build the solution.\
-   This will build ReShade and all dependencies. To build the setup tool, first build the `Release` configuration for both `32-bit` and `64-bit` targets and only afterwards build the `Release Setup` configuration (does not matter which target is selected then).
+## Installing
 
-A quick overview of what some of the source code files contain:
+1. Download the latest `MariusFX.zip` from the [releases page](https://github.com/MariusSurGithub/MariusFX/releases)
+2. Extract `dxgi.dll` into `%LOCALAPPDATA%\FiveM\FiveM.app\plugins\`
+3. Drop the `MariusFX-shaders/` folder next to the DLL
+4. Launch FiveM, press `Home` in-game
 
-|File                                                                  |Description                                                            |
-|----------------------------------------------------------------------|-----------------------------------------------------------------------|
-|[dll_log.cpp](source/dll_log.cpp)                                     |Simple file logger implementation                                      |
-|[dll_main.cpp](source/dll_main.cpp)                                   |Main entry point (and optional test application)                       |
-|[dll_resources.cpp](source/dll_resources.cpp)                         |Access to DLL resource data (e.g. built-in shaders)                    |
-|[effect_lexer.cpp](source/effect_lexer.cpp)                           |Lexical analyzer for C-like languages                                  |
-|[effect_parser_stmt.cpp](source/effect_parser_stmt.cpp)               |Parser for the ReShade FX shader language                              |
-|[effect_preprocessor.cpp](source/effect_preprocessor.cpp)             |C-like preprocessor implementation                                     |
-|[hook.cpp](source/hook.cpp)                                           |Wrapper around MinHook which tracks associated function pointers       |
-|[hook_manager.cpp](source/hook_manager.cpp)                           |Automatic hook installation based on DLL exports                       |
-|[input.cpp](source/input.cpp)                                         |Keyboard and mouse input management                                    |
-|[runtime.cpp](source/runtime.cpp)                                     |Core ReShade runtime including effect and preset management            |
-|[runtime_gui.cpp](source/runtime_gui.cpp)                             |Overlay rendering and everything user interface related                |
+That's it. Your existing `.fx` shaders and `.ini` presets work
+unchanged — drop them in `MariusFX-shaders/` and they appear in
+the overlay.
 
-## Contributing
+## Building from source
 
-Any contributions to the project are welcomed, it's recommended to use GitHub [pull requests](https://help.github.com/articles/using-pull-requests/).
+Requirements: Visual Studio 2022, Windows SDK 10.0.20348+,
+Python 3.10+ on the PATH (used by one of the build dependencies).
 
-## Feedback and Support
+```
+git clone --recurse-submodules https://github.com/MariusSurGithub/MariusFX
+cd MariusFX
+msbuild MariusFX.sln /p:Configuration=Release /p:Platform=64-bit /m
+```
 
-See the [ReShade Forum](https://reshade.me/forum) and [Discord](https://discord.gg/PrwndfH) server for feedback and support.
+Output: `bin/x64/Release/ReShade64.dll` — rename to `dxgi.dll` for
+deployment. *(The internal binary name is kept for compatibility
+with effect signing tools; the runtime branding is fully MariusFX.)*
+
+## Hotkeys
+
+| Key | Action |
+|---|---|
+| `Home` | Toggle the configuration overlay |
+| `Del`  | Toggle all effects on/off |
+| `End`  | Cycle through presets |
+
+## Roadmap
+
+- [x] Core engine + shader pipeline
+- [x] BB-diff UI masking integrated into the post-process chain
+- [ ] Custom in-game UI matching the design mockup
+- [ ] Live preview thumbnails per effect
+- [ ] Drag-and-drop effect ordering
+- [ ] Public release
 
 ## License
 
-ReShade is licensed under the terms of the [BSD 3-clause license](LICENSE.md).\
-Some source code files are dual-licensed and are also available under the terms of the MIT license, when stated as such at the top of those files.
+See [LICENSE.md](LICENSE.md) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+for the licenses governing the source code and embedded
+open-source components used by this project.
