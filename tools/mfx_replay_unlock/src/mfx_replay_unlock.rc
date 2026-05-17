@@ -1,0 +1,96 @@
+// mfx_replay_unlock.rc ─────────────────────────────────────────────────────
+//
+// Resource script for the standalone .asi plugin.
+//
+// FiveM's ASI loader (code/components/asi-five/src/Component.cpp) on
+// every game build >= 2189 demands that each .asi declare which game
+// builds it supports via a custom resource type `FX_ASI_BUILD` whose
+// resource ID is the build number itself and whose body is irrelevant
+// (a single "\0" suffices). The loader uses FindResource(MODULE,
+// L"FX_ASI_BUILD", MAKEINTRESOURCE(<build>)); if it returns NULL the
+// .asi is rejected with "this ASI plugin does not claim to support
+// game build N" in the FiveM console.
+//
+// We declare every B-tier build we've seen FiveM ship since 2189. This
+// is intentionally generous — adding a build that hasn't been released
+// is harmless (the resource just sits in the .asi unused), whereas
+// missing a build means the user has to rebuild after every FiveM
+// game-build bump. Keep this list updated as new builds come out.
+//
+// Builds covered:
+//   2189   first build to enforce FX_ASI_BUILD
+//   2372 / 2545 / 2612 / 2699 / 2802 / 2944
+//   3095 / 3258 / 3407 / 3570
+//   3751 / 3791 / 3978   (current / near-future)
+// ──────────────────────────────────────────────────────────────────────────
+
+#include <winres.h>
+
+// RC syntax: <name_id_or_string> <type_id_or_string> { data }
+//
+// FiveM looks the resource up with:
+//     FindResource(hModule, L"FX_ASI_BUILD", MAKEINTRESOURCE(<build>))
+// i.e. NAME = string  "FX_ASI_BUILD"
+//      TYPE = integer <build_number>
+//
+// So we declare N entries, all named "FX_ASI_BUILD", each with a
+// different integer TYPE = the supported build number. PE resources
+// allow multiple entries sharing a name as long as the (type, name)
+// pair is unique; here each (type=build, name="FX_ASI_BUILD") is
+// unique by construction.
+//
+// (Previous version of this file had name and type swapped, which
+//  caused FiveM to log "this ASI plugin does not claim to support
+//  game build 3751" even though the resource was present.)
+
+FX_ASI_BUILD 2189 { "\0" }
+FX_ASI_BUILD 2372 { "\0" }
+FX_ASI_BUILD 2545 { "\0" }
+FX_ASI_BUILD 2612 { "\0" }
+FX_ASI_BUILD 2699 { "\0" }
+FX_ASI_BUILD 2802 { "\0" }
+FX_ASI_BUILD 2944 { "\0" }
+FX_ASI_BUILD 3095 { "\0" }
+FX_ASI_BUILD 3258 { "\0" }
+FX_ASI_BUILD 3407 { "\0" }
+FX_ASI_BUILD 3570 { "\0" }
+FX_ASI_BUILD 3751 { "\0" }
+FX_ASI_BUILD 3791 { "\0" }
+FX_ASI_BUILD 3978 { "\0" }
+
+// ── Standard VERSIONINFO ───────────────────────────────────────────────────
+//
+// Not required by FiveM but good practice: it shows up in Windows file
+// Properties → Details and gives a clean fingerprint of the build. The
+// `OriginalFilename` field is what FiveM also reads when computing its
+// internal "blacklisted asi" check (see ComponentInstance::DoGameLoad);
+// we keep it on our real filename so we never trip a false positive.
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION     1,0,0,0
+ PRODUCTVERSION  1,0,0,0
+ FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+ FILEFLAGS       0
+ FILEOS          VOS_NT_WINDOWS32
+ FILETYPE        VFT_DLL
+ FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "MariusFX dev"
+            VALUE "FileDescription",  "Replay Unlock — FiveM Rockstar Editor clip-load fix"
+            VALUE "FileVersion",      "1.0.0.0"
+            VALUE "InternalName",     "mfx_replay_unlock"
+            VALUE "LegalCopyright",   "Public domain, use at your own risk"
+            VALUE "OriginalFilename", "mfx_replay_unlock.asi"
+            VALUE "ProductName",      "mfx_replay_unlock"
+            VALUE "ProductVersion",   "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04B0
+    END
+END

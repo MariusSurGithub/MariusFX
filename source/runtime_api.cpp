@@ -339,6 +339,17 @@ void reshade::runtime::reset_uniform_value(api::effect_uniform_variable handle)
 	reset_uniform_value(*variable);
 }
 
+void reshade::runtime::mariusfx_get_technique_timing(api::effect_technique tech, uint64_t *cpu_ns, uint64_t *gpu_ns) const
+{
+	if (cpu_ns) *cpu_ns = 0;
+	if (gpu_ns) *gpu_ns = 0;
+	if (const auto t = reinterpret_cast<const technique *>(tech.handle))
+	{
+		if (cpu_ns) *cpu_ns = static_cast<uint64_t>(t->average_cpu_duration);
+		if (gpu_ns) *gpu_ns = static_cast<uint64_t>(t->average_gpu_duration);
+	}
+}
+
 void reshade::runtime::get_uniform_value_bool(api::effect_uniform_variable handle, bool *values, size_t count, size_t array_index) const
 {
 	if (const auto variable = reinterpret_cast<const uniform *>(handle.handle))

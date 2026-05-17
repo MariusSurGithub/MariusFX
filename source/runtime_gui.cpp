@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2014 Patrick Mours
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -17,6 +17,7 @@
 #include "localization.hpp"
 #include "platform_utils.hpp"
 #include "fonts/forkawesome.inl"
+#include "mfxui_loader.hpp"
 #include <cmath> // std::abs, std::ceil, std::floor
 #include <cctype> // std::tolower
 #include <cstdlib> // std::strtol
@@ -1303,116 +1304,21 @@ void reshade::runtime::draw_gui()
 			ImGui::PopStyleVar();
 		}
 
-		const std::pair<std::string, void(runtime::*)()> overlay_callbacks[] = {
-			{ _("Home###home"), &runtime::draw_gui_home },
-#if RESHADE_ADDON
-			{ _("Add-ons###addons"), &runtime::draw_gui_addons },
-#endif
-			{ _("Settings###settings"), &runtime::draw_gui_settings },
-			{ _("Statistics###statistics"), &runtime::draw_gui_statistics },
-			{ _("Log###log"), &runtime::draw_gui_log },
-			{ _("About###about"), &runtime::draw_gui_about }
-		};
+		// MariusFX custom overlay â€” UI lives in MariusFXUI.dll which the
+		// loader (re)loads on demand. tick() must run BEFORE every other
+		// loader call so the DLL is fresh.
+		mariusfx::loader::tick();
 
-		const ImGuiID root_space_id = ImGui::GetID("ViewportDockspace");
-
-		// Set up default dock layout if this was not done yet
-		const bool init_window_layout = !ImGui::DockBuilderGetNode(root_space_id);
-		if (init_window_layout)
-		{
-			// Add the root node
-			ImGui::DockBuilderAddNode(root_space_id, ImGuiDockNodeFlags_DockSpace);
-			ImGui::DockBuilderSetNodeSize(root_space_id, viewport->Size);
-
-			// Split root node into two spaces
-			ImGuiID main_space_id = 0;
-			ImGuiID right_space_id = 0;
-			ImGui::DockBuilderSplitNode(root_space_id, ImGuiDir_Left, 0.35f, &main_space_id, &right_space_id);
-
-			// Attach most windows to the main dock space
-			for (const std::pair<std::string, void(runtime::*)()> &widget : overlay_callbacks)
-				ImGui::DockBuilderDockWindow(widget.first.c_str(), main_space_id);
-
-#if RESHADE_ADDON
-			for (const addon_info &info : addon_loaded_info)
-			{
-				for (const addon_info::overlay_callback &widget : info.overlay_callbacks)
-				{
-					if (widget.title == "OSD")
-						continue;
-
-					ImGui::DockBuilderDockWindow(widget.title.c_str(), main_space_id);
-				}
-			}
-#endif
-
-			// Attach editor window to the remaining dock space
-			ImGui::DockBuilderDockWindow("###editor", right_space_id);
-
-			// Commit the layout
-			ImGui::DockBuilderFinish(root_space_id);
-		}
-
-		ImGui::SetNextWindowPos(viewport->Pos + viewport_offset);
-		ImGui::SetNextWindowSize(viewport->Size - viewport_offset);
 		ImGui::SetNextWindowViewport(viewport->ID);
-		ImGui::Begin("Viewport", nullptr,
-			ImGuiWindowFlags_NoDecoration |
-			ImGuiWindowFlags_NoNav |
-			ImGuiWindowFlags_NoMove |
-			ImGuiWindowFlags_NoDocking | // This is the background viewport, the docking space is a child of it
-			ImGuiWindowFlags_NoFocusOnAppearing |
-			ImGuiWindowFlags_NoBringToFrontOnFocus |
-			ImGuiWindowFlags_NoBackground);
-		ImGui::DockSpace(root_space_id, ImVec2(0, 0), ImGuiDockNodeFlags_PassthruCentralNode);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+		const ImGuiWindowFlags mfx_flags = mariusfx::loader::configure_next_window(
+			viewport->Pos + viewport_offset,
+			viewport->Size - viewport_offset);
+		ImGui::Begin("##mariusfx_overlay", nullptr, mfx_flags);
+		mariusfx::loader::render(this);
 		ImGui::End();
-
-		// Ensure there is always a window that has navigation focus when keyboard or gamepad navigation is used (choose the first overlay window created next)
-		if (_imgui_context->NavInputSource > ImGuiInputSource_Mouse && _imgui_context->NavWindowingTarget == nullptr && !ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
-			ImGui::SetNextWindowFocus();
-
-		for (const std::pair<std::string, void(runtime:: *)()> &widget : overlay_callbacks)
-		{
-			if (ImGui::Begin(widget.first.c_str(), nullptr, ImGuiWindowFlags_NoFocusOnAppearing)) // No focus so that window state is preserved between opening/closing the GUI
-				(this->*widget.second)();
-			ImGui::End();
-		}
-
-		if (!_editors.empty())
-		{
-			if (ImGui::Begin(_("Edit###editor"), nullptr, ImGuiWindowFlags_NoFocusOnAppearing) &&
-				ImGui::BeginTabBar("editor_tabs"))
-			{
-				for (auto it = _editors.begin(); it != _editors.end();)
-				{
-					std::string title = it->entry_point_name.empty() ? it->file_path.filename().u8string() : it->entry_point_name;
-					title += " ###editor" + std::to_string(std::distance(_editors.begin(), it));
-
-					bool is_open = true;
-					ImGuiTabItemFlags flags = ImGuiTabItemFlags_None;
-					if (it->editor.is_modified())
-						flags |= ImGuiTabItemFlags_UnsavedDocument;
-					if (it->selected)
-						flags |= ImGuiTabItemFlags_SetSelected;
-
-					if (ImGui::BeginTabItem(title.c_str(), &is_open, flags))
-					{
-						draw_code_editor(*it);
-						ImGui::EndTabItem();
-					}
-
-					it->selected = false;
-
-					if (!is_open)
-						it = _editors.erase(it);
-					else
-						++it;
-				}
-
-				ImGui::EndTabBar();
-			}
-			ImGui::End();
-		}
+		ImGui::PopStyleVar(2);
 	}
 
 #if RESHADE_ADDON == 1
@@ -2494,6 +2400,8 @@ void reshade::runtime::draw_gui_settings()
 	if (modified_custom_style)
 		save_custom_style();
 }
+
+
 void reshade::runtime::draw_gui_statistics()
 {
 	unsigned int gpu_digits = 1;

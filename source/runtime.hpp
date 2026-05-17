@@ -401,6 +401,11 @@ namespace reshade
 		void draw_gui();
 		void draw_gui_vr();
 
+	public:
+		// MariusFX: exposed so the custom overlay (mariusfx/ui/) can
+		// reuse the upstream tab implementations as-is for the
+		// non-Shaders tabs and embed the technique/variable editors
+		// inside our own sidebar / main panel.
 		void draw_gui_home();
 		void draw_gui_settings();
 		void draw_gui_statistics();
@@ -411,6 +416,22 @@ namespace reshade
 #endif
 		void draw_variable_editor();
 		void draw_technique_editor();
+
+		// Small accessors used by the MariusFX overlay (mariusfx/ui).
+		// They live here rather than on the public effect_runtime base
+		// because they touch private state (performance mode flag, the
+		// internal reload entry point).
+		bool mariusfx_get_performance_mode() const { return _performance_mode; }
+		void mariusfx_set_performance_mode(bool v) { _performance_mode = v; }
+		void mariusfx_reload_all() { reload_effects(false); }
+
+		// Return moving-average CPU/GPU duration of the given technique
+		// in nanoseconds (0 if technique not found or not yet sampled).
+		// Used by the custom Statistics tab. Defined in runtime_api.cpp
+		// where the full `technique` struct is visible.
+		void mariusfx_get_technique_timing(api::effect_technique tech,
+		                                   uint64_t *cpu_ns, uint64_t *gpu_ns) const;
+	private:
 
 		bool init_imgui_resources();
 		void render_imgui_draw_data(api::command_list *cmd_list, ImDrawData *draw_data, api::resource_view rtv);

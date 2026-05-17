@@ -1,0 +1,114 @@
+==========================================================
+File:        10-Juin-2024-Séquence-0005.clip
+Size:        2044257 bytes
+CRC[0..3]:   D6 3B 40 12
+CRC[4..7]:   22 D6 B4 C3
+Magic:       'YLPR'
+Version:     4
+HeaderSize:  0xAD0 (2768)
+Count?:      5
+BuildDate:   'Dec  8 2022'
+BuildTime:   '10:28:38'
+ClipName:    '10-Juin-2024'
+UnixTS:      1718041364  (2024-06-10 19:42:44)
+ResourceOff: 0xAF4
+ci:// URLs:  21
+http(s)://:  336
+Resources:   21  [atmtaco, basic-gamemode, chat, eup-stream, eup-ui, fivem-map-skater, hardcap, islandprison, mapmanager, monitor, mule7, NativeUI, No-NPC-master, sessionmanager, spawnmanager, taco, tempestaevo, uj-mexcafe, vMenu, webpack, yarn]
+ServerEPs:   26.136.185.62:30120
+
+==========================================================
+File:        10-Juin-2024-Séquence-0007.clip
+Size:        6820518 bytes
+CRC[0..3]:   F4 98 F1 D6
+CRC[4..7]:   AE AB 46 91
+Magic:       'YLPR'
+Version:     4
+HeaderSize:  0xAD0 (2768)
+Count?:      5
+BuildDate:   'Dec  8 2022'
+BuildTime:   '10:28:38'
+ClipName:    '10-Juin-2024'
+UnixTS:      1718041485  (2024-06-10 19:44:45)
+ResourceOff: 0xAF4
+ci:// URLs:  21
+http(s)://:  336
+Resources:   21  [atmtaco, basic-gamemode, chat, eup-stream, eup-ui, fivem-map-skater, hardcap, islandprison, mapmanager, monitor, mule7, NativeUI, No-NPC-master, sessionmanager, spawnmanager, taco, tempestaevo, uj-mexcafe, vMenu, webpack, yarn]
+ServerEPs:   26.136.185.62:30120
+
+==========================================================
+File:        8-Mai-2026-Séquence-0002.clip
+Size:        139024951 bytes
+CRC[0..3]:   3C 7B 52 2E
+CRC[4..7]:   F5 8E 7E D0
+Magic:       'YLPR'
+Version:     4
+HeaderSize:  0xAD0 (2768)
+Count?:      5
+BuildDate:   'Jan 22 2026'
+BuildTime:   '13:43:17'
+ClipName:    '8-Mai-2026'
+UnixTS:      1778245116  (2026-05-08 14:58:36)
+ResourceOff: 0xB00
+ci:// URLs:  28
+http(s)://:  20165
+Resources:   28  [amb-roxwood-vehicles, bahamamamas, bay_catalog, bay_clothes, bay_maps, bay_props, bay_temp, brofx_vineyard, cfx_gn_ambulance_garage, cfx_gn_burgershot2_dlc, cfx_gn_house_dlc, cfx_gn_sandy_laundry, cfx_gn_vespucci_pd, cfx-gabz-bowling, cfx-gabz-firedept, cfx-gabz-mba, chat, int-xero24, map4all-ron, mapmanager, monitor, morrodaantena_interior, patoche_minigolf, plasmagame_dlc_02, sessionmanager, spawnmanager, webpack, yarn]
+ServerEPs:   cache.bay.life
+
+==========================================================
+File:        9-Mai-2026-Séquence-0001.clip
+Size:        133777109 bytes
+CRC[0..3]:   EC E5 8E BB
+CRC[4..7]:   00 AD 26 F6
+Magic:       'YLPR'
+Version:     4
+HeaderSize:  0xAD0 (2768)
+Count?:      5
+BuildDate:   'Jan 22 2026'
+BuildTime:   '13:43:17'
+ClipName:    '9-Mai-2026'
+UnixTS:      1778286890  (2026-05-09 02:34:50)
+ResourceOff: 0xB00
+ci:// URLs:  28
+http(s)://:  20198
+Resources:   28  [amb-roxwood-vehicles, bahamamamas, bay_catalog, bay_clothes, bay_maps, bay_props, bay_temp, brofx_vineyard, cfx_gn_ambulance_garage, cfx_gn_burgershot2_dlc, cfx_gn_house_dlc, cfx_gn_sandy_laundry, cfx_gn_vespucci_pd, cfx-gabz-bowling, cfx-gabz-firedept, cfx-gabz-mba, chat, int-xero24, map4all-ron, mapmanager, monitor, morrodaantena_interior, patoche_minigolf, plasmagame_dlc_02, sessionmanager, spawnmanager, webpack, yarn]
+ServerEPs:   cache.bay.life
+
+==========================================================
+File:        14-Mai-2026-Séquence-0001.clip
+Size:        65165563 bytes
+CRC[0..3]:   D0 63 2E AE
+CRC[4..7]:   AD 11 1E 0C
+Magic:       'YLPR'
+Version:     4
+HeaderSize:  0xAD0 (2768)
+Count?:      5
+BuildDate:   'Jan 22 2026'
+BuildTime:   '13:43:17'
+ClipName:    '14-Mai-2026'
+UnixTS:      1778765961  (2026-05-14 15:39:21)
+ResourceOff: 0xB00
+ci:// URLs:  28
+http(s)://:  19879
+Resources:   28  [amb-roxwood-vehicles, bahamamamas, bay_catalog, bay_clothes, bay_maps, bay_props, bay_temp, brofx_vineyard, cfx_gn_ambulance_garage, cfx_gn_burgershot2_dlc, cfx_gn_house_dlc, cfx_gn_sandy_laundry, cfx_gn_vespucci_pd, cfx-gabz-bowling, cfx-gabz-firedept, cfx-gabz-mba, chat, int-xero24, map4all-ron, mapmanager, monitor, morrodaantena_interior, patoche_minigolf, plasmagame_dlc_02, sessionmanager, spawnmanager, webpack, yarn]
+ServerEPs:   cachetest.bay.life
+
+==========================================================
+File:        12-Mai-2026-Séquence-0006.clip
+Size:        82674399 bytes
+CRC[0..3]:   B0 AB 49 33
+CRC[4..7]:   5D 6D E8 DA
+Magic:       'YLPR'
+Version:     4
+HeaderSize:  0xAD0 (2768)
+Count?:      5
+BuildDate:   'Jan 22 2026'
+BuildTime:   '13:43:17'
+ClipName:    '12-Mai-2026'
+UnixTS:      1778619401  (2026-05-12 22:56:41)
+ResourceOff: 0xB00
+ci:// URLs:  28
+http(s)://:  20133
+Resources:   28  [amb-roxwood-vehicles, bahamamamas, bay_catalog, bay_clothes, bay_maps, bay_props, bay_temp, brofx_vineyard, cfx_gn_ambulance_garage, cfx_gn_burgershot2_dlc, cfx_gn_house_dlc, cfx_gn_sandy_laundry, cfx_gn_vespucci_pd, cfx-gabz-bowling, cfx-gabz-firedept, cfx-gabz-mba, chat, int-xero24, map4all-ron, mapmanager, monitor, morrodaantena_interior, patoche_minigolf, plasmagame_dlc_02, sessionmanager, spawnmanager, webpack, yarn]
+ServerEPs:   cache.bay.life
+

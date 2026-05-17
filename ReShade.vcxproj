@@ -675,9 +675,12 @@
     <ClCompile Include="source\windows\user32.cpp" />
     <ClCompile Include="source\windows\ws2_32.cpp" />
     <ClCompile Include="mariusfx\ui_safe_mask\ui_safe_mask.cpp" />
+    <ClCompile Include="source\mfxui_loader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mariusfx\ui_safe_mask\ui_safe_mask.hpp" />
+    <ClInclude Include="source\mfxui_loader.hpp" />
+    <ClInclude Include="mariusfx\ui\exports.hpp" />
     <ClInclude Include="include\reshade.hpp" />
     <ClInclude Include="include\reshade_api.hpp" />
     <ClInclude Include="include\reshade_api_device.hpp" />
