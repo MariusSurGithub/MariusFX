@@ -18,9 +18,18 @@
 #include "reshade_api_object_impl.hpp"
 // MariusFX: BB-diff UI masking around the effect chain.
 #include "../mariusfx/ui_safe_mask/ui_safe_mask.hpp"
+// MariusFX: GBuffer capture — exposes native RAGE normals/albedo/HDR to .fx shaders.
+#include "../mariusfx/gbuffer_capture/gbuffer_capture.hpp"
+// MariusFX: SSAO injection — injects compute shader AO into RAGE pipeline.
+#include "../mariusfx/effects/ssao_injector.hpp"
+// MariusFX: Transpiler — auto-convert .fx shaders to native pipeline injections.
+#include "../mariusfx/transpiler/fx_parser.hpp"
+#include "../mariusfx/transpiler/shader_classifier.hpp"
+#include "../mariusfx/transpiler/pipeline_scheduler.hpp"
 #include <d3d11.h>
 #include <dxgi.h>
 #include <set>
+#include <fstream> // std::ifstream
 #include <cmath> // std::abs, std::fmod
 #include <cctype> // std::toupper
 #include <cwctype> // std::towlower
@@ -580,6 +589,21 @@ bool reshade::runtime::on_init()
 	_preset_save_successful = true;
 	_last_screenshot_save_successful = true;
 
+	// MariusFX: Initialize SSAO injector (compile compute shader, create constant buffer)
+	if (_device->get_api() == api::device_api::d3d11)
+	{
+		ID3D11Device *d3d11_device = reinterpret_cast<ID3D11Device *>(_device->get_native());
+		// TODO: Re-enable when ssao_injector is implemented
+		// if (!mariusfx::ssao_injector::initialize(d3d11_device))
+		// {
+		// 	log::message(log::level::warning, "[MariusFX] Failed to initialize SSAO injector");
+		// }
+		
+		// MariusFX: Initialize transpiler scheduler
+		mariusfx::transpiler::get_scheduler().initialize(d3d11_device);
+		log::message(log::level::info, "[MariusFX Transpiler] Scheduler initialized");
+	}
+
 #if RESHADE_ADDON
 	invoke_addon_event<addon_event::init_effect_runtime>(this);
 #endif
@@ -684,6 +708,14 @@ void reshade::runtime::on_reset()
 	_back_buffer_samples = 1;
 	_back_buffer_color_space = api::color_space::unknown;
 
+	// MariusFX: release GBuffer capture resources on resize/reset.
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_swapchain_invalidate();
+	
+	// MariusFX: shutdown SSAO injector (release compute shader, constant buffer)
+	// TODO: Re-enable when ssao_injector is implemented
+	// mariusfx::ssao_injector::shutdown();
+
 #if RESHADE_GUI
 	if (_is_vr)
 		deinit_gui_vr();
@@ -757,6 +789,13 @@ void reshade::runtime::on_present()
 		cmd_list->barrier(back_buffer_resource, api::resource_usage::copy_source, api::resource_usage::present);
 	}
 
+	// MariusFX: bind captured GBuffer textures so .fx shaders can sample them.
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::set_backbuffer_size(
+	// 	_effect_permutations.empty() ? 0 : _effect_permutations[0].width,
+	// 	_effect_permutations.empty() ? 0 : _effect_permutations[0].height);
+	// mariusfx::gbuffer_capture::bind_to_runtime(this);
+
 	if (!is_loading() && !_techniques.empty())
 	{
 		if (_back_buffer_resolved != 0)
@@ -785,6 +824,8 @@ void reshade::runtime::on_present()
 	// MariusFX: reset per-frame state (snapshot flag + BB draw counter)
 	// so the next frame's first BB-targeted draw triggers a fresh capture.
 	mariusfx::ui_safe_mask::on_present_end();
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_present_end();
 
 	if (_should_save_screenshot)
 		save_screenshot(_screenshot_save_before ? "After" : nullptr);
@@ -1054,6 +1095,7 @@ void reshade::runtime::load_config()
 	config_get("GENERAL", "PerformanceMode", _performance_mode);
 	config_get("GENERAL", "PreprocessorDefinitions", _global_preprocessor_definitions);
 	config_get("GENERAL", "SkipLoadingDisabledEffects", _effect_load_skipping);
+	_effect_load_skipping = false; // MariusFX: always compile all shaders
 	config_get("GENERAL", "TextureSearchPaths", _texture_search_paths);
 	config_get("GENERAL", "IntermediateCachePath", _effect_cache_path);
 
@@ -2204,6 +2246,110 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, con
 	}
 
 	effect.compiled = compiled;
+
+	// [MariusFX Transpiler] Auto-transpile shader if compilation succeeded
+	if (compiled && permutation_index == 0)
+	{
+		// Skip known problematic shaders
+		if (effect_name == "LightPersistance.fx")
+		{
+			log::message(log::level::info, "[MariusFX Transpiler] Skipping '%s' (known issue)", effect_name.c_str());
+		}
+		else
+		{
+			try
+			{
+				log::message(log::level::info, "[MariusFX Transpiler] Processing '%s'...", effect_name.c_str());
+				
+				// Read source file
+				std::ifstream file(source_file, std::ios::binary);
+				if (!file.is_open())
+				{
+					log::message(log::level::warning, "[MariusFX Transpiler] Cannot open '%s'", effect_name.c_str());
+				}
+				else
+				{
+					log::message(log::level::info, "[MariusFX Transpiler] Reading source...");
+					std::string fx_source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+					file.close();
+					
+					if (fx_source.empty())
+					{
+						log::message(log::level::warning, "[MariusFX Transpiler] Empty source for '%s'", effect_name.c_str());
+					}
+					else
+					{
+						log::message(log::level::info, "[MariusFX Transpiler] Parsing (%zu bytes)...", fx_source.size());
+						
+						// Parse and classify
+						mariusfx::transpiler::ParsedFX fx = mariusfx::transpiler::parse_fx(fx_source, source_file.u8string());
+						
+						log::message(log::level::info, "[MariusFX Transpiler] Parsed: %zu uniforms, %zu techniques", 
+							fx.uniforms.size(), fx.techniques.size());
+						
+						log::message(log::level::info, "[MariusFX Transpiler] Classifying...");
+						mariusfx::transpiler::ShaderClassification classification = mariusfx::transpiler::classify_shader(fx);
+						
+						log::message(log::level::info, "[MariusFX Transpiler] Classified: type=%d, priority=%d, confidence=%.2f, requires_ps=%d",
+							(int)classification.type, classification.priority, classification.confidence, classification.requires_pixel_shader);
+						
+						// Process shader if high confidence and has techniques
+						// Lowered threshold to 0.8 to capture more shaders
+						// Now supports both CS (transpiled) and PS (native) compilation
+						if (classification.confidence >= 0.8f && !fx.techniques.empty())
+						{
+							log::message(log::level::info, "[MariusFX Transpiler] Registering with scheduler...");
+							
+							// Register with scheduler (will transpile, compile, and prepare for injection)
+							bool success = mariusfx::transpiler::get_scheduler().register_shader(fx, 0, classification);
+							
+							if (success)
+							{
+								const char* shader_mode = classification.requires_pixel_shader ? "Native PS" : "Transpiled CS";
+								log::message(log::level::info, 
+									"[MariusFX Transpiler] ✓ Compiled '%s' → %s [%s] (priority %d, confidence %.2f)",
+									effect_name.c_str(),
+									mariusfx::transpiler::shader_type_name(classification.type),
+									shader_mode,
+									classification.priority,
+									classification.confidence);
+							}
+							else
+							{
+								log::message(log::level::warning,
+									"[MariusFX Transpiler] ✗ Failed to register '%s'",
+									effect_name.c_str());
+							}
+						}
+						else
+						{
+							log::message(log::level::info, 
+								"[MariusFX Transpiler] Skipping '%s' (low confidence %.2f or no techniques)",
+								effect_name.c_str(), classification.confidence);
+						}
+					}
+				}
+			}
+			catch (const std::bad_alloc &e)
+			{
+				log::message(log::level::error, 
+					"[MariusFX Transpiler] Memory error in '%s': %s",
+					effect_name.c_str(), e.what());
+			}
+			catch (const std::exception &e)
+			{
+				log::message(log::level::error, 
+					"[MariusFX Transpiler] Exception in '%s': %s",
+					effect_name.c_str(), e.what());
+			}
+			catch (...)
+			{
+				log::message(log::level::error, 
+					"[MariusFX Transpiler] Unknown exception in '%s'",
+					effect_name.c_str());
+			}
+		}
+	}
 
 	if (!errors.empty())
 		effect.errors = std::move(errors);
@@ -3448,11 +3594,39 @@ void reshade::runtime::reorder_techniques(std::vector<size_t> &&technique_indice
 void reshade::runtime::load_effects(bool force_load_all)
 {
 	// Build a list of effect files by walking through the effect search paths
-	const std::vector<std::filesystem::path> effect_files =
+	std::vector<std::filesystem::path> effect_files =
 		find_files(_effect_search_paths, { L".fx", L".addonfx" });
 
 	if (effect_files.empty())
 		return; // No effect files found, so nothing more to do
+
+	// Remove duplicate shaders (same filename in different directories)
+	// Keep the first occurrence, remove subsequent duplicates
+	{
+		std::unordered_set<std::wstring> seen_filenames;
+		std::vector<std::filesystem::path> unique_files;
+		size_t duplicates_removed = 0;
+
+		for (const auto &file : effect_files)
+		{
+			const std::wstring filename = file.filename().wstring();
+			if (seen_filenames.insert(filename).second)
+			{
+				unique_files.push_back(file);
+			}
+			else
+			{
+				duplicates_removed++;
+				log::message(log::level::warning, "Duplicate shader removed: %s (keeping first occurrence)", file.u8string().c_str());
+			}
+		}
+
+		if (duplicates_removed > 0)
+		{
+			log::message(log::level::info, "Removed %zu duplicate shader(s)", duplicates_removed);
+			effect_files = std::move(unique_files);
+		}
+	}
 
 	ini_file &preset = ini_file::load_cache(_current_preset_path);
 

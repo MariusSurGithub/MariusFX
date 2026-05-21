@@ -14,6 +14,9 @@
 // know when the host application targets the swapchain BB (to snapshot
 // scene_clean) so each Draw*/OMSetRenderTargets thunk forwards to it.
 #include "../../mariusfx/ui_safe_mask/ui_safe_mask.hpp"
+// MariusFX: GBuffer capture — detects deferred MRT bindings and copies
+// native RAGE normals/albedo/HDR textures for ReShade shader access.
+#include "../../mariusfx/gbuffer_capture/gbuffer_capture.hpp"
 
 using reshade::d3d11::to_handle;
 
@@ -217,6 +220,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexed(UINT IndexCount, UINT 
 #endif
 	_orig->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
 	mariusfx::ui_safe_mask::on_draw(_orig);
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_draw(_orig);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
@@ -226,6 +231,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::Draw(UINT VertexCount, UINT StartV
 #endif
 	_orig->Draw(VertexCount, StartVertexLocation);
 	mariusfx::ui_safe_mask::on_draw(_orig);
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_draw(_orig);
 }
 HRESULT STDMETHODCALLTYPE D3D11DeviceContext::Map(ID3D11Resource *pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags, D3D11_MAPPED_SUBRESOURCE *pMappedResource)
 {
@@ -348,6 +355,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexedInstanced(UINT IndexCou
 #endif
 	_orig->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 	mariusfx::ui_safe_mask::on_draw(_orig);
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_draw(_orig);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawInstanced(UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation)
 {
@@ -357,6 +366,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DrawInstanced(UINT VertexCountPerI
 #endif
 	_orig->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
 	mariusfx::ui_safe_mask::on_draw(_orig);
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_draw(_orig);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::GSSetConstantBuffers(UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppConstantBuffers)
 {
@@ -431,6 +442,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargets(UINT NumViews, 
 {
 	_orig->OMSetRenderTargets(NumViews, ppRenderTargetViews, pDepthStencilView);
 	mariusfx::ui_safe_mask::on_omset_rt(_orig, NumViews, ppRenderTargetViews);
+	// TODO: Re-enable when gbuffer_capture is implemented
+	// mariusfx::gbuffer_capture::on_omset_rt(_orig, NumViews, ppRenderTargetViews, pDepthStencilView);
 
 #if RESHADE_ADDON
 	if (!reshade::has_addon_event<reshade::addon_event::bind_render_targets_and_depth_stencil>())
@@ -453,7 +466,11 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargetsAndUnorderedAcce
 {
 	_orig->OMSetRenderTargetsAndUnorderedAccessViews(NumRTVs, ppRenderTargetViews, pDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
 	if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)
+	{
 		mariusfx::ui_safe_mask::on_omset_rt(_orig, NumRTVs, ppRenderTargetViews);
+		// TODO: Re-enable when gbuffer_capture is implemented
+		// mariusfx::gbuffer_capture::on_omset_rt(_orig, NumRTVs, ppRenderTargetViews, pDepthStencilView);
+	}
 
 #if RESHADE_ADDON
 	if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&

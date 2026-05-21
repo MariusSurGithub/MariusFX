@@ -80,6 +80,16 @@ set(RESHADE_SOURCE
   source/runtime_update_check.cpp
   source/state_block.cpp
   source/state_block.hpp
+  mariusfx/ui_safe_mask_stub.cpp
+  mariusfx/loader_stub.cpp
+  mariusfx/transpiler/fx_parser.cpp
+  mariusfx/transpiler/fx_parser.hpp
+  mariusfx/transpiler/hlsl_transpiler.cpp
+  mariusfx/transpiler/hlsl_transpiler.hpp
+  mariusfx/transpiler/shader_classifier.cpp
+  mariusfx/transpiler/shader_classifier.hpp
+  mariusfx/transpiler/pipeline_scheduler.cpp
+  mariusfx/transpiler/pipeline_scheduler.hpp
 )
 set(RESHADE_SOURCE_DIRECTX
   source/d2d1/d2d1.cpp
