@@ -234,9 +234,15 @@ namespace fs = std::filesystem;
 
 // All .ini files discovered in the current preset folder (full paths).
 std::vector<std::string> g_preset_files;
+// Subdirectories in the current preset folder (full paths).
+std::vector<std::string> g_preset_subdirs;
 // Folder we last scanned. Refresh triggered when the current preset's
 // parent path differs from this.
 std::string              g_preset_files_folder;
+// Root folder: the initial preset folder. Used as a floor for navigation.
+std::string              g_preset_root_folder;
+// Navigation history stack for "back" navigation.
+std::vector<std::string> g_preset_nav_history;
 char                     g_preset_search[160] = "";
 
 bool   g_preset_popup_open  = false;
@@ -265,16 +271,125 @@ bool  g_force_size   = true;       // re-apply width on the next configure (afte
 constexpr float kMinWindowWidth  = 480.0f;
 constexpr float kMaxWindowFrac   = 0.7f;   // max 70% of viewport width
 
-// ── User-configurable hotkeys ──────────────────────────────────────────────
-// Virtual-key codes (VK_* from winuser.h). 0 = unbound.
-int g_hotkey_menu_toggle      = VK_HOME;    // Default: Home
-int g_hotkey_screenshot       = VK_F11;     // Default: F11
-int g_hotkey_shader_toggle    = VK_SPACE;   // Default: Space (when menu open)
+// ── Settings state (wired to the runtime via host API bridge) ──────────────
+// Screenshot config — synced from runtime on first settings panel open.
+char  g_ss_path[260]     = {};
+char  g_ss_name[128]     = {};
+int   g_ss_quality       = 90;
+int   g_ss_format        = 1;    // 0=BMP 1=PNG 2=JPEG
+bool  g_settings_synced  = false; // true once we've read from runtime
 
-// ── Screenshot settings ────────────────────────────────────────────────────
-char g_screenshot_path[260]   = "Screenshots";  // Relative to game root or absolute
-char g_screenshot_filename[128] = "MariusFX_%Y%m%d_%H%M%S.jpg";  // strftime pattern
-int  g_screenshot_quality     = 90;         // JPEG quality 1-100
+// Hotkey data — each is unsigned int[4]: [0]=VK, [1..3]=modifiers.
+unsigned int g_key_overlay[4]    = {};
+unsigned int g_key_screenshot[4] = {};
+unsigned int g_key_effects[4]    = {};
+
+// Key-capture state: which hotkey is being rebound (-1 = none).
+int  g_capturing_key     = -1;   // 0=overlay, 1=screenshot, 2=effects
+
+// Sync settings FROM the runtime (called once on first settings panel open).
+void settings_sync_from_runtime(mfx::runtime *rt)
+{
+    if (g_settings_synced) return;
+    g_settings_synced = true;
+#ifdef MARIUSFX_HOT_DLL
+    if (!g_host_api) return;
+    if (g_host_api->get_screenshot_path)
+        g_host_api->get_screenshot_path(rt, g_ss_path, sizeof(g_ss_path));
+    if (g_host_api->get_screenshot_name)
+        g_host_api->get_screenshot_name(rt, g_ss_name, sizeof(g_ss_name));
+    if (g_host_api->get_screenshot_quality)
+        g_ss_quality = (int)g_host_api->get_screenshot_quality(rt);
+    if (g_host_api->get_screenshot_format)
+        g_ss_format = (int)g_host_api->get_screenshot_format(rt);
+    if (g_host_api->get_overlay_key)
+        g_host_api->get_overlay_key(rt, g_key_overlay);
+    if (g_host_api->get_screenshot_key)
+        g_host_api->get_screenshot_key(rt, g_key_screenshot);
+    if (g_host_api->get_effects_key)
+        g_host_api->get_effects_key(rt, g_key_effects);
+#else
+    (void)rt;
+#endif
+}
+
+// Push a changed setting TO the runtime and persist.
+void settings_save(mfx::runtime *rt)
+{
+#ifdef MARIUSFX_HOT_DLL
+    if (!g_host_api) return;
+    if (g_host_api->set_screenshot_path)
+        g_host_api->set_screenshot_path(rt, g_ss_path);
+    if (g_host_api->set_screenshot_name)
+        g_host_api->set_screenshot_name(rt, g_ss_name);
+    if (g_host_api->set_screenshot_quality)
+        g_host_api->set_screenshot_quality(rt, (unsigned int)g_ss_quality);
+    if (g_host_api->set_screenshot_format)
+        g_host_api->set_screenshot_format(rt, (unsigned int)g_ss_format);
+    if (g_host_api->set_overlay_key)
+        g_host_api->set_overlay_key(rt, g_key_overlay);
+    if (g_host_api->set_screenshot_key)
+        g_host_api->set_screenshot_key(rt, g_key_screenshot);
+    if (g_host_api->set_effects_key)
+        g_host_api->set_effects_key(rt, g_key_effects);
+    if (g_host_api->save_config)
+        g_host_api->save_config(rt);
+#else
+    (void)rt;
+#endif
+}
+
+// Convert a VK code to a human-readable name.
+void vk_to_name(unsigned int vk, char *buf, unsigned int sz)
+{
+    if (vk == 0)                          { snprintf(buf, sz, "None"); return; }
+    if (vk >= VK_F1 && vk <= VK_F24)     { snprintf(buf, sz, "F%u", vk - VK_F1 + 1); return; }
+    if (vk >= 'A' && vk <= 'Z')          { snprintf(buf, sz, "%c", (char)vk); return; }
+    if (vk >= '0' && vk <= '9')          { snprintf(buf, sz, "%c", (char)vk); return; }
+    switch (vk) {
+        case VK_HOME:     snprintf(buf, sz, "Home"); break;
+        case VK_END:      snprintf(buf, sz, "End"); break;
+        case VK_INSERT:   snprintf(buf, sz, "Insert"); break;
+        case VK_DELETE:   snprintf(buf, sz, "Delete"); break;
+        case VK_SPACE:    snprintf(buf, sz, "Space"); break;
+        case VK_RETURN:   snprintf(buf, sz, "Enter"); break;
+        case VK_ESCAPE:   snprintf(buf, sz, "Escape"); break;
+        case VK_TAB:      snprintf(buf, sz, "Tab"); break;
+        case VK_BACK:     snprintf(buf, sz, "Backspace"); break;
+        case VK_PRIOR:    snprintf(buf, sz, "PgUp"); break;
+        case VK_NEXT:     snprintf(buf, sz, "PgDown"); break;
+        case VK_LEFT:     snprintf(buf, sz, "Left"); break;
+        case VK_RIGHT:    snprintf(buf, sz, "Right"); break;
+        case VK_UP:       snprintf(buf, sz, "Up"); break;
+        case VK_DOWN:     snprintf(buf, sz, "Down"); break;
+        case VK_SNAPSHOT: snprintf(buf, sz, "PrtScn"); break;
+        case VK_PAUSE:    snprintf(buf, sz, "Pause"); break;
+        case VK_NUMLOCK:  snprintf(buf, sz, "NumLock"); break;
+        case VK_CAPITAL:  snprintf(buf, sz, "CapsLock"); break;
+        case VK_SCROLL:   snprintf(buf, sz, "ScrLock"); break;
+        case VK_OEM_PLUS: snprintf(buf, sz, "+"); break;
+        case VK_OEM_MINUS:snprintf(buf, sz, "-"); break;
+        case VK_OEM_COMMA:snprintf(buf, sz, ","); break;
+        case VK_OEM_PERIOD:snprintf(buf, sz, "."); break;
+        default:          snprintf(buf, sz, "0x%02X", vk); break;
+    }
+}
+
+// Build a display string for key_data[4] (VK + up to 3 modifiers).
+void key_data_to_string(const unsigned int key_data[4], char *buf, unsigned int sz)
+{
+    buf[0] = '\0';
+    char part[32];
+    for (int i = 3; i >= 1; --i) {
+        if (key_data[i] == 0) continue;
+        vk_to_name(key_data[i], part, sizeof(part));
+        size_t len = strlen(buf);
+        snprintf(buf + len, sz - (unsigned int)len, "%s + ", part);
+    }
+    vk_to_name(key_data[0], part, sizeof(part));
+    size_t len = strlen(buf);
+    snprintf(buf + len, sz - (unsigned int)len, "%s", part);
+}
 
 // ── Misc ───────────────────────────────────────────────────────────────────
 void colored_text(ImU32 c, const char *fmt, ...)
@@ -341,11 +456,12 @@ std::string preset_basename(const std::string &full)
     return name;
 }
 
-// (Re)build g_preset_files for the given folder. Sorted case-insensitively
-// by file stem. Cheap (one directory_iterator pass).
+// (Re)build g_preset_files and g_preset_subdirs for the given folder.
+// Sorted case-insensitively by file stem / folder name.
 void refresh_preset_files(const std::string &folder)
 {
     g_preset_files.clear();
+    g_preset_subdirs.clear();
     g_preset_files_folder = folder;
     if (folder.empty()) return;
     std::error_code ec;
@@ -353,6 +469,10 @@ void refresh_preset_files(const std::string &folder)
     for (const auto &e : fs::directory_iterator(folder, ec))
     {
         if (ec) break;
+        if (e.is_directory(ec)) {
+            g_preset_subdirs.push_back(e.path().string());
+            continue;
+        }
         if (!e.is_regular_file(ec)) continue;
         const fs::path &p = e.path();
         std::string ext = p.extension().string();
@@ -360,6 +480,19 @@ void refresh_preset_files(const std::string &folder)
         if (ext != ".ini") continue;
         g_preset_files.push_back(p.string());
     }
+    auto icase_sort = [](const std::string &a, const std::string &b) {
+        std::string an = a, bn = b;
+        // Extract last component for comparison
+        auto last_comp = [](const std::string &s) -> std::string {
+            size_t pos = s.find_last_of("/\\");
+            return (pos == std::string::npos) ? s : s.substr(pos + 1);
+        };
+        an = last_comp(an); bn = last_comp(bn);
+        for (char &c : an) c = (char)std::tolower((unsigned char)c);
+        for (char &c : bn) c = (char)std::tolower((unsigned char)c);
+        return an < bn;
+    };
+    std::sort(g_preset_subdirs.begin(), g_preset_subdirs.end(), icase_sort);
     std::sort(g_preset_files.begin(), g_preset_files.end(),
               [](const std::string &a, const std::string &b) {
                   std::string an = preset_basename(a);
@@ -368,6 +501,38 @@ void refresh_preset_files(const std::string &folder)
                   for (char &c : bn) c = (char)std::tolower((unsigned char)c);
                   return an < bn;
               });
+}
+
+// Navigate into a subfolder, pushing current folder onto the history stack.
+void navigate_preset_folder(const std::string &new_folder)
+{
+    if (!g_preset_files_folder.empty())
+        g_preset_nav_history.push_back(g_preset_files_folder);
+    g_preset_search[0] = '\0';
+    g_preset_rename_idx = -1;
+    g_preset_delete_confirm = -1;
+    refresh_preset_files(new_folder);
+}
+
+// Navigate back to the previous folder in history.
+bool navigate_preset_back()
+{
+    if (g_preset_nav_history.empty()) return false;
+    std::string prev = g_preset_nav_history.back();
+    g_preset_nav_history.pop_back();
+    g_preset_search[0] = '\0';
+    g_preset_rename_idx = -1;
+    g_preset_delete_confirm = -1;
+    refresh_preset_files(prev);
+    return true;
+}
+
+// Get folder display name (last path component).
+std::string folder_display_name(const std::string &full)
+{
+    if (full.empty()) return {};
+    const size_t slash = full.find_last_of("/\\");
+    return (slash == std::string::npos) ? full : full.substr(slash + 1);
 }
 
 // Read the runtime's current preset path into a std::string.
@@ -674,7 +839,7 @@ SliderResult mfx_slider_float_ex(const char *id, float w, float h,
     const ImGuiIO &io = ImGui::GetIO();
 
     // ── Numeric input mode ─────────────────────────────────────────
-    // Triggered by Ctrl+click. Drawn in place of the slider so the
+    // Triggered by double-click. Drawn in place of the slider so the
     // cursor lands directly in the field.
     if (std::strcmp(id, g_slider_input_id) == 0)
     {
@@ -701,7 +866,7 @@ SliderResult mfx_slider_float_ex(const char *id, float w, float h,
 
         SliderResult result = SLIDER_NONE;
         if (committed) {
-            const float nv = ImClamp((float)atof(g_slider_input_buf), vmin, vmax);
+            const float nv = (float)atof(g_slider_input_buf); // No clamp: allow exceeding shader limits via manual input
             if (nv != *value) { *value = nv; result = SLIDER_CHANGED; }
             g_slider_input_id[0] = '\0';
         }
@@ -721,19 +886,15 @@ SliderResult mfx_slider_float_ex(const char *id, float w, float h,
     const bool right_clk  = ImGui::IsItemHovered() &&
                             ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
-    // Reset shortcut  emitted to caller, slider doesn't own the default.
-    if (dbl || right_clk) return SLIDER_RESET;
+    // Reset shortcut  right-click only.
+    if (right_clk) return SLIDER_RESET;
 
-    // Ctrl+click (without drag yet)  switch to numeric input mode.
-    if (active && io.KeyCtrl &&
-        ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-        std::abs(io.MouseDelta.x) < 0.5f)
+    // Double-click  switch to numeric input mode for manual value entry.
+    if (dbl)
     {
         copy_str(g_slider_input_id, sizeof(g_slider_input_id), id);
         slider_format_value(g_slider_input_buf, sizeof(g_slider_input_buf), *value);
-        // Release the active item so the input owns the focus next frame.
         ImGui::ClearActiveID();
-        // Visuals one last time so we don't render a half-state.
     }
 
     SliderResult result = SLIDER_NONE;
@@ -757,46 +918,35 @@ SliderResult mfx_slider_float_ex(const char *id, float w, float h,
     }
 
     // ── Visuals ─────────────────────────────────────────────────────
-    // Wider track (8px) with the value displayed inline. The text sits
-    // on the LEFT if the thumb is past 50%, otherwise on the RIGHT, so
-    // it never collides with the filled portion.
-    const float track_h = 8.0f;
-    const ImVec2 ta(a.x, a.y + (h - track_h) * 0.5f);
-    const ImVec2 tb(b.x, ta.y + track_h);
-    
-    // Background track
-    dl->AddRectFilled(ta, tb, col::bg_input, 4.0f);
+    // Flat bar slider: full-height rounded bar with accent fill and
+    // value text centered inside. Consistent across single/multi-comp.
+    const float rad = h * 0.35f;
+
+    // Background bar
+    dl->AddRectFilled(a, b, col::bg_input, rad);
 
     const float t = (vmax > vmin)
         ? ImClamp((*value - vmin) / (vmax - vmin), 0.0f, 1.0f) : 0.0f;
     const float fx = a.x + w * t;
-    
-    // Filled portion (accent color)
-    dl->AddRectFilled(ta, ImVec2(fx, tb.y), 
-                      hov ? col::accent_strong : col::accent, 4.0f);
 
-    // Value text inline on the track (optional).
+    // Filled portion
+    if (fx > a.x + 2.0f)
+        dl->AddRectFilled(a, ImVec2(fx, b.y),
+                          active ? col::accent_strong : (hov ? col::accent_hover : col::accent), rad);
+
+    // Subtle border on hover
+    if (hov)
+        dl->AddRect(a, b, col::border_accent, rad, 0, 1.0f);
+
+    // Value text centered inside the bar
     if (show_value) {
         char val_str[32];
-        snprintf(val_str, sizeof(val_str), "%.2f", *value);
+        snprintf(val_str, sizeof(val_str), "%.3g", *value);
         const ImVec2 txt_size = ImGui::CalcTextSize(val_str);
-        const float txt_x = (t < 0.5f) 
-            ? (fx + 8.0f)                          // Right of thumb
-            : (fx - txt_size.x - 8.0f);            // Left of thumb
-        const float txt_y = ta.y + (track_h - txt_size.y) * 0.5f;
-        
-        // Ensure text stays within track bounds
-        const float final_txt_x = ImClamp(txt_x, a.x + 4.0f, b.x - txt_size.x - 4.0f);
-        
-        dl->AddText(ImVec2(final_txt_x, txt_y), 
-                    t < 0.5f ? col::text_primary : IM_COL32(255, 255, 255, 255), 
-                    val_str);
+        const float txt_x = a.x + (w - txt_size.x) * 0.5f;
+        const float txt_y = a.y + (h - txt_size.y) * 0.5f;
+        dl->AddText(ImVec2(txt_x, txt_y), IM_COL32(255, 255, 255, 220), val_str);
     }
-
-    // Thumb indicator: vertical line at the fill edge
-    dl->AddLine(ImVec2(fx, ta.y), ImVec2(fx, tb.y), 
-                IM_COL32(255, 255, 255, active ? 255 : (hov ? 200 : 150)), 
-                2.0f);
 
     if (hov && !active) ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     return result;
@@ -1142,38 +1292,39 @@ void draw_uniform(mfx::runtime *rt, const UniformRow &u)
     const bool is_button = (std::strcmp(u.ui_type, "button") == 0) && is_bool;
     const bool is_drag   = (std::strcmp(u.ui_type, "drag") == 0);
 
-    // Geometry. ctrl_x is computed as a ratio of the available width so
-    // the column boundary slides with the panel and never starves the
-    // control. The reset slot takes a fixed 22 px on the right.
+    // Geometry. For sliders/drags: label on top, full-width control below.
+    // For toggles/combos: label left, control right (single row).
     const float full_w  = ImGui::GetContentRegionAvail().x;
     const float reset_w = u.noreset ? 0.0f : 22.0f;
     const float gap     = 6.0f;
-    float label_w       = full_w * 0.45f;
-    if (label_w < 100.0f) label_w = 100.0f;
-    if (label_w > 220.0f) label_w = 220.0f;
-    if (label_w > full_w - 140.0f - reset_w - gap * 2.0f)
-        label_w = std::max(80.0f, full_w - 140.0f - reset_w - gap * 2.0f);
-    const float ctrl_w = full_w - label_w - reset_w - gap * 2.0f;
+
+    // Determine if this control benefits from a two-row layout (slider/drag)
+    const bool is_slider_type = !is_button && !is_bool && !is_color && !is_combo && !is_list && !is_radio;
+    const float ctrl_w = is_slider_type
+        ? (full_w - reset_w - gap)                   // full width for sliders
+        : (full_w * 0.55f);                          // right-aligned for toggles/combos
+    float label_w = is_slider_type ? full_w : (full_w - ctrl_w - reset_w - gap * 2.0f);
+    if (label_w < 80.0f) label_w = 80.0f;
 
     if (u.noedit) ImGui::BeginDisabled();
 
-    // ── Label column ─────────────────────────────────────────────────
-    // Clipped to label_w so the column boundary is never crossed. The
-    // tooltip attaches to the label rect (and works even on disabled
-    // rows thanks to ImGuiHoveredFlags_AllowWhenDisabled).
+    ImGui::Dummy(ImVec2(0, 4.0f)); // uniform vertical gap between parameters
+
+    // ── Label row ────────────────────────────────────────────────────
+    const float start_cursor_x = ImGui::GetCursorPosX(); // window-local X before label
     const ImVec2 row_top = ImGui::GetCursorScreenPos();
     ImGui::AlignTextToFramePadding();
     ImGui::PushStyleColor(ImGuiCol_Text, to_vec4(col::text_secondary));
-    ImGui::PushClipRect(row_top,
-                        ImVec2(row_top.x + label_w, row_top.y + 200.0f),
-                        true);
     ImGui::TextUnformatted(u.label);
-    ImGui::PopClipRect();
     ImGui::PopStyleColor();
     const bool label_hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled);
 
-    ImGui::SameLine(0.0f, 0.0f);
-    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (label_w - ImGui::CalcTextSize(u.label).x) + gap);
+    if (!is_slider_type) {
+        // Single-row layout: control on the same line, right-aligned
+        ImGui::SameLine();
+        const float target_x = start_cursor_x + full_w - ctrl_w - reset_w - gap;
+        ImGui::SetCursorPosX(target_x > ImGui::GetCursorPosX() ? target_x : ImGui::GetCursorPosX());
+    }
 
     // ── Control column ───────────────────────────────────────────────
     bool changed = false;
@@ -1272,8 +1423,9 @@ void draw_uniform(mfx::runtime *rt, const UniformRow &u)
         float v[4] = { 0, 0, 0, 0 };
         rt->get_uniform_value_float(u.handle, v, (size_t)comps, 0);
 
+        ImGui::Dummy(ImVec2(0, 2.0f)); // spacing between label and slider
+
         if (is_drag && !u.has_range) {
-            // Unbounded drag  use ImGui::DragFloatN for sane behaviour.
             const float step = (u.ui_step[0] > 0.0f) ? u.ui_step[0] : 0.01f;
             char fmt[24]; snprintf(fmt, sizeof(fmt), "%%.3f%s", u.ui_units[0] ? u.ui_units : "");
             ImGui::SetNextItemWidth(ctrl_w);
@@ -1286,9 +1438,9 @@ void draw_uniform(mfx::runtime *rt, const UniformRow &u)
             const float vmin = u.has_range ? u.ui_min[0] : 0.0f;
             const float vmax = u.has_range ? u.ui_max[0] : 1.0f;
             const float step = (u.ui_step[0] > 0.0f) ? u.ui_step[0] : 0.0f;
-            const float slider_h = 24.0f;
+            const float slider_h = 26.0f;
             const SliderResult sr = (comps == 1)
-                ? mfx_slider_float_ex(id,        ctrl_w, slider_h, vmin, vmax, step, v)
+                ? mfx_slider_float_ex(id,        ctrl_w, slider_h, vmin, vmax, step, v, true)
                 : mfx_slider_floatN_ex(id, comps, ctrl_w, slider_h, vmin, vmax, step, v);
             if (sr == SLIDER_CHANGED) {
                 rt->set_uniform_value_float(u.handle, v, (size_t)comps, 0);
@@ -1304,6 +1456,8 @@ void draw_uniform(mfx::runtime *rt, const UniformRow &u)
         if (is_int) rt->get_uniform_value_int(u.handle, v, (size_t)comps, 0);
         else        rt->get_uniform_value_uint(u.handle, reinterpret_cast<uint32_t *>(v), (size_t)comps, 0);
 
+        ImGui::Dummy(ImVec2(0, 2.0f)); // spacing between label and slider
+
         if (is_drag && !u.has_range) {
             ImGui::SetNextItemWidth(ctrl_w);
             char fmt[24]; snprintf(fmt, sizeof(fmt), "%%d%s", u.ui_units[0] ? u.ui_units : "");
@@ -1316,7 +1470,7 @@ void draw_uniform(mfx::runtime *rt, const UniformRow &u)
         } else {
             const int vmin = u.has_range ? (int)u.ui_min[0] : 0;
             const int vmax = u.has_range ? (int)u.ui_max[0] : 100;
-            const float slider_h = 24.0f;
+            const float slider_h = 26.0f;
             SliderResult sr;
             if (comps == 1) {
                 int iv = (int)v[0];
@@ -1384,7 +1538,10 @@ void draw_uniform(mfx::runtime *rt, const UniformRow &u)
 
     if (u.noedit) ImGui::EndDisabled();
 
-    if (changed) g_last_change_time = ImGui::GetTime();
+    if (changed) {
+        g_last_change_time = ImGui::GetTime();
+        rt->save_current_preset();
+    }
 }
 
 bool action_button(const char *label, ImU32 bg, ImU32 border, ImU32 fg, float h = 28.0f)

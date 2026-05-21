@@ -328,19 +328,78 @@ void pl_draw_stats_panel(mfx::runtime *rt, ImVec2 origin, float width, float hei
         ImGui::PopStyleVar();
     }
 
+    // ── Compilation Errors ──────────────────────────────────────────
+    // Display shaders that failed to compile
+    const float errors_y = list_y + (lb.y - la.y) + 14.0f;
+    const ImVec2 ea(origin.x + pad, errors_y);
+    const ImVec2 eb(origin.x + width - pad, origin.y + height - pad);
+    if (eb.y > ea.y + 60.0f)
+    {
+        // Count failed shaders (techniques that are hidden due to compilation failure)
+        int failed_count = 0;
+        for (const auto &t : g_techs) {
+            if (t.hidden) failed_count++;
+        }
+
+        if (failed_count > 0)
+        {
+            dl->AddRectFilled(ea, eb, col::bg_card, size::radius_card);
+            dl->AddRect      (ea, eb, IM_COL32(0xFF, 0x5F, 0x57, 0x88), size::radius_card);
+
+            char hdr[64];
+            snprintf(hdr, sizeof(hdr), "COMPILATION ERRORS  %d shader(s) failed", failed_count);
+            dl->AddText(ImVec2(ea.x + 12, ea.y + 8), IM_COL32(0xFF, 0x5F, 0x57, 0xFF), hdr);
+
+            const float err_row_h = 24.0f;
+            const float err_head_h = 32.0f;
+            ImGui::SetCursorScreenPos(ImVec2(ea.x, ea.y + err_head_h));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            ImGui::BeginChild("##mfx_stats_errors",
+                              ImVec2(eb.x - ea.x, eb.y - ea.y - err_head_h - 8.0f),
+                              false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
+            for (const auto &t : g_techs) {
+                if (!t.hidden) continue;
+                const ImVec2 ra = ImGui::GetCursorScreenPos();
+                
+                // Error icon (red circle with X)
+                const float icon_x = ea.x + 12.0f;
+                const float icon_y = ra.y + err_row_h * 0.5f;
+                dl->AddCircleFilled(ImVec2(icon_x, icon_y), 6.0f, IM_COL32(0xFF, 0x5F, 0x57, 0xFF));
+                dl->AddText(ImVec2(icon_x - 3.0f, icon_y - 7.0f), IM_COL32(0xFF, 0xFF, 0xFF, 0xFF), "x");
+
+                // Shader name
+                dl->AddText(ImVec2(ea.x + 32.0f, ra.y + (err_row_h - ImGui::GetTextLineHeight()) * 0.5f),
+                            col::text_primary, t.name);
+
+                // Error message (generic for now, will be enhanced later)
+                dl->AddText(ImVec2(ea.x + 280.0f, ra.y + (err_row_h - ImGui::GetTextLineHeight()) * 0.5f),
+                            col::text_dim, "Failed to compile");
+
+                ImGui::Dummy(ImVec2(0, err_row_h));
+            }
+
+            ImGui::EndChild();
+            ImGui::PopStyleVar();
+        }
+    }
+
     ImGui::EndChild();
     ImGui::PopStyleVar();
 }
 
 // ── Right-panel: SETTINGS ──────────────────────────────────────────────────
 //
-// MariusFX-only preferences. Every option here is owned by the pipeline
-// editor — no embedded upstream tab. If the user ever needs the host's
-// own configuration surface, the host's regular overlay hotkey still
-// works alongside ours.
+// Auto-layout flow: every section stacks naturally, scrolls correctly.
+// All settings are wired to the runtime via the host API bridge so edits
+// actually take effect and get persisted.
 void pl_draw_settings_panel(mfx::runtime *rt, ImVec2 origin, float width, float height)
 {
     using namespace theme;
+
+    // First-time sync from runtime
+    settings_sync_from_runtime(rt);
+
     ImDrawList *dl = ImGui::GetWindowDrawList();
     dl->AddRectFilled(origin, ImVec2(origin.x + width, origin.y + height), col::bg_app);
 
@@ -349,72 +408,96 @@ void pl_draw_settings_panel(mfx::runtime *rt, ImVec2 origin, float width, float 
     ImGui::BeginChild("##mfx_settings_col", ImVec2(width, height), false,
                       ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
-    const float pad     = 18.0f;
-    const float strip_h = 44.0f;
+    const float pad   = 18.0f;
+    const float inner = width - pad * 2.0f;
 
-    // ── Compact title strip ─────────────────────────────────────────
-    // Slimmer than the old big "header card with subtitle"  the panel's
-    // role is already obvious from the toolbar icon that activated it.
-    {
-        const ImVec2 ca(origin.x + pad, origin.y + pad);
-        const ImVec2 cb(origin.x + width - pad, ca.y + strip_h);
-        dl->AddRectFilled(ImVec2(ca.x, ca.y + 8), ImVec2(ca.x + 3, cb.y - 8),
-                          col::accent_strong, 1.5f);
-        dl->AddText(ImVec2(ca.x + 16, ca.y + (strip_h - ImGui::GetTextLineHeight()) * 0.5f),
-                    col::text_primary, "Settings");
-    }
-
-    // Helper for each section. Returns the y where content starts.
-    auto section = [&](const char *title, float y, float h) -> ImVec2 {
-        const ImVec2 sa(origin.x + pad, y);
-        const ImVec2 sb(origin.x + width - pad, y + h);
+    // ── Section helpers (auto-layout + channel split for correct z-order) ──
+    ImDrawListSplitter splitter;
+    float sec_x = 0, sec_top = 0;
+    auto section_begin = [&](const char *title) {
+        ImGui::Dummy(ImVec2(0, 10.0f));
+        const ImVec2 cur = ImGui::GetCursorScreenPos();
+        sec_x   = cur.x + pad;
+        sec_top = cur.y;
+        // Split: channel 0 = card bg (behind), channel 1 = content (front)
+        splitter.Split(dl, 2);
+        splitter.SetCurrentChannel(dl, 1);
+        dl->AddText(ImVec2(sec_x, sec_top), col::text_dimmest, title);
+        ImGui::SetCursorScreenPos(ImVec2(sec_x, sec_top + 22.0f));
+    };
+    auto section_end = [&]() {
+        ImGui::Dummy(ImVec2(0, 4.0f));
+        const ImVec2 cur = ImGui::GetCursorScreenPos();
+        const float card_h = cur.y - sec_top + 8.0f;
+        const ImVec2 sa(sec_x - 14.0f, sec_top - 8.0f);
+        const ImVec2 sb(sec_x + inner, sec_top + card_h);
+        // Draw card on channel 0 (behind all content)
+        splitter.SetCurrentChannel(dl, 0);
         dl->AddRectFilled(sa, sb, col::bg_card, size::radius_card);
         dl->AddRect      (sa, sb, col::border_subtle, size::radius_card);
-        dl->AddText(ImVec2(sa.x + 14.0f, sa.y + 10.0f), col::text_dimmest, title);
-        return ImVec2(sa.x + 14.0f, sa.y + 36.0f);
+        splitter.Merge(dl);
+        ImGui::Dummy(ImVec2(0, 2.0f));
     };
 
-    const float body_top = origin.y + pad + strip_h + 12.0f;
+    // Reusable pill-shaped button
+    auto pill_btn = [&](const char *id, const char *label, float bw, float bh = 30.0f) -> bool {
+        const ImVec2 ba = ImGui::GetCursorScreenPos();
+        const ImVec2 bb(ba.x + bw, ba.y + bh);
+        ImGui::InvisibleButton(id, ImVec2(bw, bh));
+        const bool hov = ImGui::IsItemHovered();
+        const bool clk = ImGui::IsItemClicked();
+        if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        dl->AddRectFilled(ba, bb, hov ? col::bg_card_hover : col::bg_app, bh * 0.5f);
+        dl->AddRect      (ba, bb, hov ? col::border_accent : col::border_default, bh * 0.5f);
+        const float lw = ImGui::CalcTextSize(label).x;
+        dl->AddText(ImVec2((ba.x + bb.x - lw) * 0.5f,
+                           (ba.y + bb.y - ImGui::GetTextLineHeight()) * 0.5f),
+                    hov ? col::accent : col::text_primary, label);
+        return clk;
+    };
 
-    // ── Pipeline ────────────────────────────────────────────────────
-    // Two switches that govern *what* renders, not *how* it looks.
+    // ── Title ────────────────────────────────────────────────────────
     {
-        const float y = body_top;
-        const float h = 96.0f;
-        const ImVec2 cs = section("PIPELINE", y, h);
+        ImGui::Dummy(ImVec2(0, pad));
+        const ImVec2 tp = ImGui::GetCursorScreenPos();
+        dl->AddRectFilled(ImVec2(tp.x + pad, tp.y), ImVec2(tp.x + pad + 3, tp.y + 24),
+                          col::accent_strong, 1.5f);
+        dl->AddText(ImVec2(tp.x + pad + 14, tp.y + 2), col::text_primary, "Settings");
+        ImGui::Dummy(ImVec2(0, 32.0f));
+    }
+
+    // ── PIPELINE ─────────────────────────────────────────────────────
+    section_begin("PIPELINE");
+    {
         const bool fx_on = rt->get_effects_state();
         const bool perf  = rt_get_performance_mode(rt);
 
-        ImGui::SetCursorScreenPos(ImVec2(cs.x, cs.y));
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        ImGui::SetCursorScreenPos(p);
         if (toggle_switch("##mfx_set_fx", fx_on, 44.0f, 24.0f))
             rt->set_effects_state(!fx_on);
-        dl->AddText(ImVec2(cs.x + 56.0f, cs.y + 4.0f),
-                    col::text_primary, "Master enable");
-        dl->AddText(ImVec2(cs.x + 56.0f, cs.y + 22.0f),
-                    col::text_dimmest, "Turn every shader on or off in one click.");
+        dl->AddText(ImVec2(p.x + 56.0f, p.y + 4.0f), col::text_primary, "Master enable");
+        ImGui::Dummy(ImVec2(0, 30.0f));
 
-        ImGui::SetCursorScreenPos(ImVec2(cs.x, cs.y + 44.0f));
+        p = ImGui::GetCursorScreenPos();
+        ImGui::SetCursorScreenPos(p);
         if (toggle_switch("##mfx_set_perf", perf, 44.0f, 24.0f))
             rt_set_performance_mode(rt, !perf);
-        dl->AddText(ImVec2(cs.x + 56.0f, cs.y + 48.0f),
-                    col::text_primary, "Performance mode");
-        dl->AddText(ImVec2(cs.x + 56.0f, cs.y + 66.0f),
-                    col::text_dimmest, "Locks parameters. Small GPU win.");
+        dl->AddText(ImVec2(p.x + 56.0f, p.y + 4.0f), col::text_primary, "Performance mode");
+        ImGui::Dummy(ImVec2(0, 28.0f));
     }
+    section_end();
 
-    // ── Layout ──────────────────────────────────────────────────────
-    // Pure cosmetic  where the panel docks.
+    // ── LAYOUT ───────────────────────────────────────────────────────
+    section_begin("LAYOUT");
     {
-        const float y = body_top + 96.0f + 12.0f;
-        const float h = 72.0f;
-        const ImVec2 cs = section("LAYOUT", y, h);
-
+        const ImVec2 p = ImGui::GetCursorScreenPos();
         const char *labels[2] = { "Dock left", "Dock right" };
-        const float bw = 120.0f, bh = 30.0f;
+        const float bw = (inner - 28.0f - 8.0f) * 0.5f, bh = 30.0f;
         for (int i = 0; i < 2; ++i) {
             const bool sel = (g_dock_side == DOCK_LEFT  && i == 0) ||
                              (g_dock_side == DOCK_RIGHT && i == 1);
-            const ImVec2 ba(cs.x + i * (bw + 8.0f), cs.y);
+            const ImVec2 ba(p.x + i * (bw + 8.0f), p.y);
             const ImVec2 bb(ba.x + bw, ba.y + bh);
             ImGui::SetCursorScreenPos(ba);
             char id[24]; snprintf(id, sizeof(id), "##mfx_set_dock_%d", i);
@@ -428,194 +511,244 @@ void pl_draw_settings_panel(mfx::runtime *rt, ImVec2 origin, float width, float 
             dl->AddRectFilled(ba, bb,
                               sel ? col::accent_subtle : (hov ? col::bg_card_hover : col::bg_app),
                               bh * 0.5f);
-            dl->AddRect      (ba, bb,
-                              sel ? col::border_accent : col::border_default,
-                              bh * 0.5f);
+            dl->AddRect(ba, bb,
+                        sel ? col::border_accent : col::border_default,
+                        bh * 0.5f);
             const float lw = ImGui::CalcTextSize(labels[i]).x;
             dl->AddText(ImVec2((ba.x + bb.x - lw) * 0.5f,
                                (ba.y + bb.y - ImGui::GetTextLineHeight()) * 0.5f),
                         sel ? col::accent_strong : col::text_dim, labels[i]);
         }
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + bh + 4.0f));
+        ImGui::Dummy(ImVec2(0, 4.0f));
     }
+    section_end();
 
-    // ── Actions ─────────────────────────────────────────────────────
-    // The two destructive ops that don't fit elsewhere: rebuild from
-    // disk, and zero every uniform back to its declared default.
+    // ── ACTIONS ──────────────────────────────────────────────────────
+    section_begin("ACTIONS");
     {
-        const float y = body_top + 96.0f + 12.0f + 72.0f + 12.0f;
-        const float h = 80.0f;
-        const ImVec2 cs = section("ACTIONS", y, h);
-
-        auto pill_btn = [&](const char *id, const char *label, float bx,
-                            float by, float bw, ImU32 base_col) -> bool {
-            const ImVec2 ba(bx, by);
-            const ImVec2 bb(bx + bw, by + 30.0f);
-            ImGui::SetCursorScreenPos(ba);
-            ImGui::InvisibleButton(id, ImVec2(bw, 30.0f));
-            const bool hov = ImGui::IsItemHovered();
-            const bool clk = ImGui::IsItemClicked();
-            if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            dl->AddRectFilled(ba, bb, hov ? col::bg_card_hover : base_col, 15.0f);
-            dl->AddRect      (ba, bb, hov ? col::border_accent : col::border_default, 15.0f);
-            const float lw = ImGui::CalcTextSize(label).x;
-            dl->AddText(ImVec2((ba.x + bb.x - lw) * 0.5f,
-                               (ba.y + bb.y - ImGui::GetTextLineHeight()) * 0.5f),
-                        hov ? col::accent : col::text_primary, label);
-            return clk;
-        };
-
-        if (pill_btn("##mfx_set_reload",
-                     "Reload all effects (Ctrl+R)",
-                     cs.x, cs.y, 220.0f, col::bg_app))
+        const float half = (inner - 28.0f - 8.0f) * 0.5f;
+        if (pill_btn("##mfx_set_reload", "Reload all effects", half))
             rt_reload_all(rt);
-
-        if (pill_btn("##mfx_set_reset_all",
-                     "Reset every uniform",
-                     cs.x + 230.0f, cs.y, 180.0f, col::bg_app))
+        ImGui::SameLine(0, 8.0f);
+        if (pill_btn("##mfx_set_reset_all", "Reset all uniforms", half))
         {
-            // Walk every loaded effect; reset all of its uniforms.
             rt->enumerate_uniform_variables(nullptr,
                 [](api::effect_runtime *rtp, api::effect_uniform_variable v) {
                     rtp->reset_uniform_value(v);
                 });
             g_last_change_time = ImGui::GetTime();
         }
+        ImGui::Dummy(ImVec2(0, 4.0f));
     }
+    section_end();
 
-    // ── Hotkeys configuration ───────────────────────────────────────
-    // Let the user rebind the three main hotkeys: menu toggle, screenshot,
-    // and shader toggle (when menu is open).
+    // ── HOTKEYS (wired to runtime, with capture-on-click) ────────────
+    section_begin("HOTKEYS");
     {
-        const float y = body_top + 96.0f + 12.0f + 72.0f + 12.0f + 80.0f + 12.0f;
-        const float h = 140.0f;
-        const ImVec2 cs = section("HOTKEYS", y, h);
+        // Hotkey data pointers for indexed access
+        unsigned int *key_ptrs[3] = { g_key_overlay, g_key_screenshot, g_key_effects };
+        const char   *key_labels[3] = { "Menu toggle", "Screenshot", "Effects toggle" };
 
-        auto hotkey_row = [&](const char *label, int *vk_ptr, float row_y) {
-            dl->AddText(ImVec2(cs.x, row_y), col::text_primary, label);
-            
-            // Display current key name
-            char key_name[64] = "None";
-            if (*vk_ptr != 0) {
-                // Simple mapping for common keys (extend as needed)
-                switch (*vk_ptr) {
-                    case VK_HOME:   snprintf(key_name, sizeof(key_name), "Home"); break;
-                    case VK_F11:    snprintf(key_name, sizeof(key_name), "F11"); break;
-                    case VK_SPACE:  snprintf(key_name, sizeof(key_name), "Space"); break;
-                    case VK_F1:     snprintf(key_name, sizeof(key_name), "F1"); break;
-                    case VK_F2:     snprintf(key_name, sizeof(key_name), "F2"); break;
-                    case VK_F3:     snprintf(key_name, sizeof(key_name), "F3"); break;
-                    case VK_F4:     snprintf(key_name, sizeof(key_name), "F4"); break;
-                    case VK_F5:     snprintf(key_name, sizeof(key_name), "F5"); break;
-                    case VK_F6:     snprintf(key_name, sizeof(key_name), "F6"); break;
-                    case VK_F7:     snprintf(key_name, sizeof(key_name), "F7"); break;
-                    case VK_F8:     snprintf(key_name, sizeof(key_name), "F8"); break;
-                    case VK_F9:     snprintf(key_name, sizeof(key_name), "F9"); break;
-                    case VK_F10:    snprintf(key_name, sizeof(key_name), "F10"); break;
-                    case VK_F12:    snprintf(key_name, sizeof(key_name), "F12"); break;
-                    case VK_INSERT: snprintf(key_name, sizeof(key_name), "Insert"); break;
-                    case VK_DELETE: snprintf(key_name, sizeof(key_name), "Delete"); break;
-                    case VK_END:    snprintf(key_name, sizeof(key_name), "End"); break;
-                    default:
-                        if (*vk_ptr >= 'A' && *vk_ptr <= 'Z')
-                            snprintf(key_name, sizeof(key_name), "%c", (char)*vk_ptr);
-                        else
-                            snprintf(key_name, sizeof(key_name), "VK_%d", *vk_ptr);
+        // Process key capture if active (modern ImGui key API)
+        if (g_capturing_key >= 0) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                g_capturing_key = -1; // cancel
+            } else {
+                // Scannable keys: ImGuiKey → VK mapping
+                struct KeyMap { ImGuiKey ik; unsigned int vk; };
+                static const KeyMap kmap[] = {
+                    {ImGuiKey_Tab,VK_TAB},{ImGuiKey_LeftArrow,VK_LEFT},{ImGuiKey_RightArrow,VK_RIGHT},
+                    {ImGuiKey_UpArrow,VK_UP},{ImGuiKey_DownArrow,VK_DOWN},
+                    {ImGuiKey_PageUp,VK_PRIOR},{ImGuiKey_PageDown,VK_NEXT},
+                    {ImGuiKey_Home,VK_HOME},{ImGuiKey_End,VK_END},
+                    {ImGuiKey_Insert,VK_INSERT},{ImGuiKey_Delete,VK_DELETE},
+                    {ImGuiKey_Backspace,VK_BACK},{ImGuiKey_Space,VK_SPACE},{ImGuiKey_Enter,VK_RETURN},
+                    {ImGuiKey_PrintScreen,VK_SNAPSHOT},{ImGuiKey_Pause,VK_PAUSE},
+                    {ImGuiKey_ScrollLock,VK_SCROLL},{ImGuiKey_NumLock,VK_NUMLOCK},{ImGuiKey_CapsLock,VK_CAPITAL},
+                    {ImGuiKey_0,'0'},{ImGuiKey_1,'1'},{ImGuiKey_2,'2'},{ImGuiKey_3,'3'},{ImGuiKey_4,'4'},
+                    {ImGuiKey_5,'5'},{ImGuiKey_6,'6'},{ImGuiKey_7,'7'},{ImGuiKey_8,'8'},{ImGuiKey_9,'9'},
+                    {ImGuiKey_A,'A'},{ImGuiKey_B,'B'},{ImGuiKey_C,'C'},{ImGuiKey_D,'D'},{ImGuiKey_E,'E'},
+                    {ImGuiKey_F,'F'},{ImGuiKey_G,'G'},{ImGuiKey_H,'H'},{ImGuiKey_I,'I'},{ImGuiKey_J,'J'},
+                    {ImGuiKey_K,'K'},{ImGuiKey_L,'L'},{ImGuiKey_M,'M'},{ImGuiKey_N,'N'},{ImGuiKey_O,'O'},
+                    {ImGuiKey_P,'P'},{ImGuiKey_Q,'Q'},{ImGuiKey_R,'R'},{ImGuiKey_S,'S'},{ImGuiKey_T,'T'},
+                    {ImGuiKey_U,'U'},{ImGuiKey_V,'V'},{ImGuiKey_W,'W'},{ImGuiKey_X,'X'},{ImGuiKey_Y,'Y'},
+                    {ImGuiKey_Z,'Z'},
+                    {ImGuiKey_F1,VK_F1},{ImGuiKey_F2,VK_F2},{ImGuiKey_F3,VK_F3},{ImGuiKey_F4,VK_F4},
+                    {ImGuiKey_F5,VK_F5},{ImGuiKey_F6,VK_F6},{ImGuiKey_F7,VK_F7},{ImGuiKey_F8,VK_F8},
+                    {ImGuiKey_F9,VK_F9},{ImGuiKey_F10,VK_F10},{ImGuiKey_F11,VK_F11},{ImGuiKey_F12,VK_F12},
+                    {ImGuiKey_Keypad0,VK_NUMPAD0},{ImGuiKey_Keypad1,VK_NUMPAD1},{ImGuiKey_Keypad2,VK_NUMPAD2},
+                    {ImGuiKey_Keypad3,VK_NUMPAD3},{ImGuiKey_Keypad4,VK_NUMPAD4},{ImGuiKey_Keypad5,VK_NUMPAD5},
+                    {ImGuiKey_Keypad6,VK_NUMPAD6},{ImGuiKey_Keypad7,VK_NUMPAD7},{ImGuiKey_Keypad8,VK_NUMPAD8},
+                    {ImGuiKey_Keypad9,VK_NUMPAD9},
+                };
+                const ImGuiIO &io = ImGui::GetIO();
+                for (const auto &km : kmap) {
+                    if (ImGui::IsKeyPressed(km.ik, false)) {
+                        unsigned int *dst = key_ptrs[g_capturing_key];
+                        dst[0] = km.vk;
+                        dst[1] = io.KeyCtrl  ? VK_CONTROL : 0;
+                        dst[2] = io.KeyShift ? VK_SHIFT   : 0;
+                        dst[3] = io.KeyAlt   ? VK_MENU    : 0;
+                        g_capturing_key = -1;
+                        settings_save(rt);
                         break;
+                    }
                 }
             }
-            
-            const float btn_x = cs.x + 200.0f;
-            const float btn_w = 120.0f;
-            const ImVec2 ba(btn_x, row_y - 4.0f);
-            const ImVec2 bb(btn_x + btn_w, row_y + 20.0f);
-            
-            char id[32];
-            snprintf(id, sizeof(id), "##hotkey_%s", label);
+        }
+
+        const float btn_w = 120.0f, btn_h = 26.0f;
+        for (int ki = 0; ki < 3; ++ki) {
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            dl->AddText(ImVec2(p.x, p.y + 4.0f), col::text_primary, key_labels[ki]);
+
+            char display[64];
+            const bool is_capturing = (g_capturing_key == ki);
+            if (is_capturing)
+                snprintf(display, sizeof(display), "Press a key...");
+            else
+                key_data_to_string(key_ptrs[ki], display, sizeof(display));
+
+            const float btn_x = p.x + inner - btn_w - 28.0f;
+            const ImVec2 ba(btn_x, p.y);
+            const ImVec2 bb(btn_x + btn_w, p.y + btn_h);
+
+            char id[48]; snprintf(id, sizeof(id), "##hk_%d", ki);
             ImGui::SetCursorScreenPos(ba);
-            ImGui::InvisibleButton(id, ImVec2(btn_w, 24.0f));
+            ImGui::InvisibleButton(id, ImVec2(btn_w, btn_h));
             const bool hov = ImGui::IsItemHovered();
             if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-            
-            dl->AddRectFilled(ba, bb, hov ? col::bg_card_hover : col::bg_input, 4.0f);
-            dl->AddRect(ba, bb, col::border_default, 4.0f);
-            
-            const float tw = ImGui::CalcTextSize(key_name).x;
-            dl->AddText(ImVec2((ba.x + bb.x - tw) * 0.5f, row_y),
-                        col::text_primary, key_name);
-            
-            // TODO: Implement key capture on click (for now just display)
-        };
+            if (ImGui::IsItemClicked())
+                g_capturing_key = ki;
 
-        hotkey_row("Menu toggle", &g_hotkey_menu_toggle, cs.y);
-        hotkey_row("Screenshot", &g_hotkey_screenshot, cs.y + 32.0f);
-        hotkey_row("Shader toggle", &g_hotkey_shader_toggle, cs.y + 64.0f);
-        
-        dl->AddText(ImVec2(cs.x, cs.y + 100.0f), col::text_dimmest,
-                    "Click a button to rebind (press Esc to cancel).");
-    }
+            const ImU32 bg_col = is_capturing ? col::accent_subtle :
+                                 (hov ? col::bg_card_hover : col::bg_input);
+            const ImU32 bd_col = is_capturing ? col::accent :
+                                 (hov ? col::border_accent : col::border_default);
+            dl->AddRectFilled(ba, bb, bg_col, 6.0f);
+            dl->AddRect(ba, bb, bd_col, 6.0f);
 
-    // ── Screenshot settings ─────────────────────────────────────────
-    {
-        const float y = body_top + 96.0f + 12.0f + 72.0f + 12.0f + 80.0f + 12.0f + 140.0f + 12.0f;
-        const float h = 160.0f;
-        const ImVec2 cs = section("SCREENSHOT", y, h);
+            const float tw = ImGui::CalcTextSize(display).x;
+            dl->AddText(ImVec2((ba.x + bb.x - tw) * 0.5f,
+                               (ba.y + bb.y - ImGui::GetTextLineHeight()) * 0.5f),
+                        is_capturing ? col::accent : col::text_primary, display);
 
-        dl->AddText(ImVec2(cs.x, cs.y), col::text_primary, "Folder");
-        ImGui::SetCursorScreenPos(ImVec2(cs.x, cs.y + 20.0f));
-        ImGui::SetNextItemWidth(width - pad * 2 - 28.0f);
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::to_vec4(col::bg_input));
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::to_vec4(col::text_primary));
-        ImGui::InputText("##ss_path", g_screenshot_path, sizeof(g_screenshot_path));
-        ImGui::PopStyleColor(2);
-
-        dl->AddText(ImVec2(cs.x, cs.y + 52.0f), col::text_primary, "Filename pattern");
-        ImGui::SetCursorScreenPos(ImVec2(cs.x, cs.y + 72.0f));
-        ImGui::SetNextItemWidth(width - pad * 2 - 28.0f);
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::to_vec4(col::bg_input));
-        ImGui::PushStyleColor(ImGuiCol_Text, theme::to_vec4(col::text_primary));
-        ImGui::InputText("##ss_filename", g_screenshot_filename, sizeof(g_screenshot_filename));
-        ImGui::PopStyleColor(2);
-
-        dl->AddText(ImVec2(cs.x, cs.y + 104.0f), col::text_primary, "JPEG quality");
-        ImGui::SetCursorScreenPos(ImVec2(cs.x + 120.0f, cs.y + 100.0f));
-        ImGui::SetNextItemWidth(200.0f);
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::to_vec4(col::bg_input));
-        ImGui::PushStyleColor(ImGuiCol_SliderGrab, theme::to_vec4(col::accent));
-        ImGui::SliderInt("##ss_quality", &g_screenshot_quality, 1, 100, "%d%%");
-        ImGui::PopStyleColor(2);
-        
-        dl->AddText(ImVec2(cs.x, cs.y + 132.0f), col::text_dimmest,
-                    "Use %Y%m%d_%H%M%S for date/time in filename.");
-    }
-
-    // ── Shortcuts cheat-sheet ───────────────────────────────────────
-    {
-        const float y = body_top + 96.0f + 12.0f + 72.0f + 12.0f + 80.0f + 12.0f + 140.0f + 12.0f + 160.0f + 12.0f;
-        const float h = 124.0f;
-        const ImVec2 cs = section("KEYBOARD SHORTCUTS", y, h);
-
-        struct Sh { const char *k; const char *desc; };
-        static const Sh shortcuts[] = {
-            { "Ctrl+F",  "Focus shader search" },
-            { "↑ / ↓",   "Navigate shaders"    },
-            { "Space",   "Toggle selected"     },
-            { "Tab",     "Cycle right panel"   },
-            { "Esc",     "Clear / close"       },
-            { "Ctrl+R",  "Reload effects"      },
-        };
-        const float sh_y0 = cs.y;
-        const float line_h = 16.0f;
-        for (int i = 0; i < (int)(sizeof(shortcuts) / sizeof(shortcuts[0])); ++i) {
-            const int col_idx = i % 2;
-            const int row_    = i / 2;
-            const float x  = cs.x + col_idx * (width * 0.5f - pad);
-            const float y2 = sh_y0 + row_ * line_h;
-            dl->AddText(ImVec2(x,           y2), col::accent,        shortcuts[i].k);
-            dl->AddText(ImVec2(x + 70.0f,   y2), col::text_dim,      shortcuts[i].desc);
+            ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + btn_h + 6.0f));
         }
     }
+    section_end();
 
-    ImGui::Dummy(ImVec2(0, body_top - origin.y + 96.0f + 12.0f + 72.0f + 12.0f + 80.0f + 12.0f + 140.0f + 12.0f + 160.0f + 12.0f + 124.0f + pad));
+    // ── SCREENSHOT (wired to runtime) ────────────────────────────────
+    section_begin("SCREENSHOT");
+    {
+        const float field_w = inner - 28.0f;
+        bool changed = false;
+
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, theme::to_vec4(col::bg_input));
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::to_vec4(col::text_primary));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 6));
+
+        // Folder
+        dl->AddText(ImGui::GetCursorScreenPos(), col::text_secondary, "Save folder");
+        ImGui::Dummy(ImVec2(0, 18.0f));
+        ImGui::SetNextItemWidth(field_w);
+        if (ImGui::InputText("##ss_path", g_ss_path, sizeof(g_ss_path),
+                             ImGuiInputTextFlags_EnterReturnsTrue))
+            changed = true;
+        if (ImGui::IsItemDeactivatedAfterEdit()) changed = true;
+        ImGui::Dummy(ImVec2(0, 8.0f));
+
+        // Filename pattern
+        dl->AddText(ImGui::GetCursorScreenPos(), col::text_secondary, "Filename pattern");
+        ImGui::Dummy(ImVec2(0, 18.0f));
+        ImGui::SetNextItemWidth(field_w);
+        if (ImGui::InputText("##ss_name", g_ss_name, sizeof(g_ss_name),
+                             ImGuiInputTextFlags_EnterReturnsTrue))
+            changed = true;
+        if (ImGui::IsItemDeactivatedAfterEdit()) changed = true;
+        ImGui::Dummy(ImVec2(0, 8.0f));
+
+        // Format selector (BMP / PNG / JPEG)
+        {
+            dl->AddText(ImGui::GetCursorScreenPos(), col::text_secondary, "Format");
+            ImGui::Dummy(ImVec2(0, 20.0f));
+            const char *fmt_labels[3] = { "BMP", "PNG", "JPEG" };
+            const float fbw = (field_w - 8.0f * 2.0f) / 3.0f;
+            const ImVec2 base = ImGui::GetCursorScreenPos();
+            for (int fi = 0; fi < 3; ++fi) {
+                const bool sel = (g_ss_format == fi);
+                const ImVec2 fa(base.x + fi * (fbw + 8.0f), base.y);
+                const ImVec2 fb(fa.x + fbw, fa.y + 26.0f);
+                ImGui::SetCursorScreenPos(fa);
+                char fid[24]; snprintf(fid, sizeof(fid), "##ss_fmt_%d", fi);
+                ImGui::InvisibleButton(fid, ImVec2(fbw, 26.0f));
+                if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                if (ImGui::IsItemClicked() && !sel) {
+                    g_ss_format = fi;
+                    changed = true;
+                }
+                dl->AddRectFilled(fa, fb,
+                    sel ? col::accent_subtle : (ImGui::IsItemHovered() ? col::bg_card_hover : col::bg_app),
+                    13.0f);
+                dl->AddRect(fa, fb,
+                    sel ? col::border_accent : col::border_default, 13.0f);
+                const float tw = ImGui::CalcTextSize(fmt_labels[fi]).x;
+                dl->AddText(ImVec2((fa.x + fb.x - tw) * 0.5f,
+                                   (fa.y + fb.y - ImGui::GetTextLineHeight()) * 0.5f),
+                            sel ? col::accent_strong : col::text_dim, fmt_labels[fi]);
+            }
+            ImGui::SetCursorScreenPos(ImVec2(base.x, base.y + 30.0f));
+        }
+
+        // Quality slider (only relevant for JPEG)
+        if (g_ss_format == 2) {
+            ImGui::Dummy(ImVec2(0, 4.0f));
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            dl->AddText(p, col::text_secondary, "JPEG quality");
+            char pct[16]; snprintf(pct, sizeof(pct), "%d%%", g_ss_quality);
+            const float pctw = ImGui::CalcTextSize(pct).x;
+            dl->AddText(ImVec2(p.x + field_w - pctw, p.y), col::text_primary, pct);
+            ImGui::Dummy(ImVec2(0, 20.0f));
+
+            ImGui::PushStyleColor(ImGuiCol_SliderGrab, theme::to_vec4(col::accent));
+            ImGui::SetNextItemWidth(field_w);
+            if (ImGui::SliderInt("##ss_quality", &g_ss_quality, 1, 100, ""))
+                changed = true;
+            ImGui::PopStyleColor();
+        }
+
+        ImGui::PopStyleVar(2);
+        ImGui::PopStyleColor(2);
+
+        if (changed) settings_save(rt);
+
+        ImGui::Dummy(ImVec2(0, 4.0f));
+    }
+    section_end();
+
+    // ── SHORTCUTS (reference only) ───────────────────────────────────
+    section_begin("SHORTCUTS");
+    {
+        struct Sh { const char *k; const char *desc; };
+        static const Sh shortcuts[] = {
+            { "Ctrl+F", "Focus shader search" },
+            { "Ctrl+R", "Reload effects"      },
+            { "Space",  "Toggle selected"     },
+            { "Tab",    "Cycle right panel"   },
+            { "Esc",    "Clear / close"       },
+        };
+        for (int i = 0; i < (int)(sizeof(shortcuts) / sizeof(shortcuts[0])); ++i) {
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            dl->AddText(p, col::accent, shortcuts[i].k);
+            dl->AddText(ImVec2(p.x + 80.0f, p.y), col::text_dim, shortcuts[i].desc);
+            ImGui::Dummy(ImVec2(0, 18.0f));
+        }
+    }
+    section_end();
+
+    ImGui::Dummy(ImVec2(0, pad));
     ImGui::EndChild();
     ImGui::PopStyleVar();
 }

@@ -18,20 +18,25 @@ namespace mariusfx::ui::theme {
 // gamma/colorspace conversion ImGui applies to the style array.
 
 namespace col {
-// Backgrounds
-constexpr ImU32 bg_app          = IM_COL32(0x08, 0x0A, 0x0F, 0xFF);
-constexpr ImU32 bg_sidebar      = IM_COL32(0x06, 0x08, 0x0C, 0xFF);
-constexpr ImU32 bg_titlebar     = IM_COL32(0x08, 0x0A, 0x0F, 0xFF);
-constexpr ImU32 bg_bottombar    = IM_COL32(0x06, 0x08, 0x0C, 0xFF);
-constexpr ImU32 bg_card         = IM_COL32(0xFF, 0xFF, 0xFF, 0x05);   // 0.02 alpha on white over bg_app
-constexpr ImU32 bg_card_hover   = IM_COL32(0xFF, 0xFF, 0xFF, 0x12);
-constexpr ImU32 bg_input        = IM_COL32(0xFF, 0xFF, 0xFF, 0x08);
-constexpr ImU32 bg_input_focus  = IM_COL32(0x4F, 0x7E, 0xF8, 0x10);
+// Backgrounds — glassmorphism-inspired with subtle gradients
+constexpr ImU32 bg_app          = IM_COL32(0x0A, 0x0C, 0x12, 0xFF);  // Deeper, richer black
+constexpr ImU32 bg_sidebar      = IM_COL32(0x0D, 0x0F, 0x16, 0xF8);  // Slightly translucent
+constexpr ImU32 bg_icon_sidebar = IM_COL32(0x08, 0x0A, 0x0F, 0xFF);  // Darker icon sidebar
+constexpr ImU32 bg_titlebar     = IM_COL32(0x0A, 0x0C, 0x12, 0xFA);  // Subtle transparency
+constexpr ImU32 bg_bottombar    = IM_COL32(0x0D, 0x0F, 0x16, 0xF8);
+constexpr ImU32 bg_card         = IM_COL32(0xFF, 0xFF, 0xFF, 0x0A);  // More visible glass effect
+constexpr ImU32 bg_card_hover   = IM_COL32(0xFF, 0xFF, 0xFF, 0x18);  // Stronger hover
+constexpr ImU32 bg_input        = IM_COL32(0xFF, 0xFF, 0xFF, 0x0C);  // Slightly more visible
+constexpr ImU32 bg_input_focus  = IM_COL32(0x4F, 0x7E, 0xF8, 0x18);  // Stronger focus glow
 
-// Borders
-constexpr ImU32 border_default  = IM_COL32(0xFF, 0xFF, 0xFF, 0x0D);   // 0.05 alpha on white
-constexpr ImU32 border_subtle   = IM_COL32(0xFF, 0xFF, 0xFF, 0x10);
-constexpr ImU32 border_accent   = IM_COL32(0x4F, 0x7E, 0xF8, 0x4C);
+// Borders — softer, more refined
+constexpr ImU32 border_default  = IM_COL32(0xFF, 0xFF, 0xFF, 0x12);  // More visible
+constexpr ImU32 border_subtle   = IM_COL32(0xFF, 0xFF, 0xFF, 0x08);  // Subtle inner borders
+constexpr ImU32 border_accent   = IM_COL32(0x4F, 0x7E, 0xF8, 0x60);  // Stronger accent
+
+// Shadows — for depth and elevation
+constexpr ImU32 shadow_soft     = IM_COL32(0x00, 0x00, 0x00, 0x30);  // Card shadows
+constexpr ImU32 shadow_strong   = IM_COL32(0x00, 0x00, 0x00, 0x50);  // Modal shadows
 
 // Text — five tiers, from primary down to "almost invisible label"
 constexpr ImU32 text_primary    = IM_COL32(0xE2, 0xEA, 0xF4, 0xFF);
@@ -42,11 +47,12 @@ constexpr ImU32 text_dimmer     = IM_COL32(0x3D, 0x4A, 0x5C, 0xFF);
 constexpr ImU32 text_dimmest    = IM_COL32(0x2E, 0x3A, 0x48, 0xFF);
 constexpr ImU32 text_disabled   = IM_COL32(0x1E, 0x2A, 0x38, 0xFF);
 
-// Accents
-constexpr ImU32 accent          = IM_COL32(0x4F, 0x7E, 0xF8, 0xFF);  // primary brand blue
-constexpr ImU32 accent_hover    = IM_COL32(0x7A, 0xA2, 0xFB, 0xFF);
-constexpr ImU32 accent_subtle   = IM_COL32(0x4F, 0x7E, 0xF8, 0x1E);  // 0.12 alpha
-constexpr ImU32 accent_strong   = IM_COL32(0xA5, 0xBE, 0xFA, 0xFF);
+// Accents — vibrant gradient-ready colors
+constexpr ImU32 accent          = IM_COL32(0x5B, 0x8D, 0xFF, 0xFF);  // Brighter, more vibrant blue
+constexpr ImU32 accent_hover    = IM_COL32(0x7A, 0xA8, 0xFF, 0xFF);  // Lighter on hover
+constexpr ImU32 accent_subtle   = IM_COL32(0x5B, 0x8D, 0xFF, 0x20);  // Subtle glow
+constexpr ImU32 accent_strong   = IM_COL32(0xA8, 0xC5, 0xFF, 0xFF);  // Bright highlight
+constexpr ImU32 accent_gradient = IM_COL32(0x3D, 0x6F, 0xE8, 0xFF);  // Gradient end
 
 // Stats ribbon
 constexpr ImU32 stat_fps        = IM_COL32(0x3C, 0xD9, 0x90, 0xFF);
@@ -75,16 +81,25 @@ constexpr ImU32 save_text       = IM_COL32(0x3C, 0xD9, 0x90, 0xFF);
 // custom-drawn pieces like the titlebar dots).
 
 namespace size {
-constexpr float titlebar_height   = 40.0f;
-constexpr float bottombar_height  = 44.0f;
-constexpr float sidebar_width     = 280.0f;
-constexpr float preview_width     = 196.0f;
+constexpr float titlebar_height   = 48.0f;   // Taller, more spacious
+constexpr float bottombar_height  = 52.0f;   // More breathing room
+constexpr float sidebar_width     = 300.0f;  // Wider for better readability
+constexpr float icon_sidebar_w    = 64.0f;   // Vertical icon nav bar (Map Studio style)
+constexpr float header_h          = 72.0f;   // Header bar height (title + subtitle)
+constexpr float preview_width     = 220.0f;  // Larger previews
 
-constexpr float radius_card       = 10.0f;
-constexpr float radius_button     = 7.0f;
-constexpr float radius_input      = 8.0f;
-constexpr float radius_pill       = 20.0f;
-constexpr float radius_shader_row = 8.0f;
+constexpr float radius_card       = 12.0f;   // Smoother curves
+constexpr float radius_button     = 8.0f;    // More rounded
+constexpr float radius_input      = 10.0f;   // Softer inputs
+constexpr float radius_pill       = 24.0f;   // Fuller pills
+constexpr float radius_shader_row = 10.0f;   // Smoother rows
+
+// Spacing — more generous, modern
+constexpr float spacing_xs        = 4.0f;
+constexpr float spacing_sm        = 8.0f;
+constexpr float spacing_md        = 12.0f;
+constexpr float spacing_lg        = 16.0f;
+constexpr float spacing_xl        = 24.0f;
 } // namespace size
 
 // Apply our palette + paddings to the global ImGuiStyle. Idempotent —

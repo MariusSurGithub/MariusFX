@@ -216,8 +216,8 @@ bool load_fresh()
     if (g_l.set_host_api != nullptr)
     {
         static const MfxuiHostAPI s_host_api = {
-            // get_technique_timing — copies the runtime's per-tech CPU/GPU
-            // ns counters into the DLL's output pointers.
+            // ── v2 original ────────────────────────────────────────
+            // get_technique_timing
             [](reshade::api::effect_runtime *rt,
                unsigned long long handle,
                unsigned long long *cpu_ns, unsigned long long *gpu_ns) {
@@ -238,6 +238,74 @@ bool load_fresh()
             // reload_all
             [](reshade::api::effect_runtime *rt) {
                 static_cast<reshade::runtime*>(rt)->mariusfx_reload_all();
+            },
+
+            // ── v2+ extensions: screenshot config ──────────────────
+            // get_screenshot_path
+            [](reshade::api::effect_runtime *rt, char *buf, unsigned int sz) {
+                auto *r = static_cast<reshade::runtime*>(rt);
+                std::string s = r->mariusfx_screenshot_path().u8string();
+                snprintf(buf, sz, "%s", s.c_str());
+            },
+            // set_screenshot_path
+            [](reshade::api::effect_runtime *rt, const char *path) {
+                static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_path() = std::filesystem::u8path(path);
+            },
+            // get_screenshot_name
+            [](reshade::api::effect_runtime *rt, char *buf, unsigned int sz) {
+                auto *r = static_cast<reshade::runtime*>(rt);
+                snprintf(buf, sz, "%s", r->mariusfx_screenshot_name().c_str());
+            },
+            // set_screenshot_name
+            [](reshade::api::effect_runtime *rt, const char *name) {
+                static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_name() = name;
+            },
+            // get_screenshot_format
+            [](reshade::api::effect_runtime *rt) -> unsigned int {
+                return static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_format();
+            },
+            // set_screenshot_format
+            [](reshade::api::effect_runtime *rt, unsigned int fmt) {
+                static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_format() = fmt;
+            },
+            // get_screenshot_quality
+            [](reshade::api::effect_runtime *rt) -> unsigned int {
+                return static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_quality();
+            },
+            // set_screenshot_quality
+            [](reshade::api::effect_runtime *rt, unsigned int q) {
+                static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_quality() = q;
+            },
+
+            // ── v2+ extensions: hotkey config ──────────────────────
+            // get_overlay_key
+            [](reshade::api::effect_runtime *rt, unsigned int out[4]) {
+                memcpy(out, static_cast<reshade::runtime*>(rt)->mariusfx_overlay_key_data(), sizeof(unsigned int) * 4);
+            },
+            // set_overlay_key
+            [](reshade::api::effect_runtime *rt, const unsigned int data[4]) {
+                memcpy(static_cast<reshade::runtime*>(rt)->mariusfx_overlay_key_data(), data, sizeof(unsigned int) * 4);
+            },
+            // get_screenshot_key
+            [](reshade::api::effect_runtime *rt, unsigned int out[4]) {
+                memcpy(out, static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_key_data(), sizeof(unsigned int) * 4);
+            },
+            // set_screenshot_key
+            [](reshade::api::effect_runtime *rt, const unsigned int data[4]) {
+                memcpy(static_cast<reshade::runtime*>(rt)->mariusfx_screenshot_key_data(), data, sizeof(unsigned int) * 4);
+            },
+            // get_effects_key
+            [](reshade::api::effect_runtime *rt, unsigned int out[4]) {
+                memcpy(out, static_cast<reshade::runtime*>(rt)->mariusfx_effects_key_data(), sizeof(unsigned int) * 4);
+            },
+            // set_effects_key
+            [](reshade::api::effect_runtime *rt, const unsigned int data[4]) {
+                memcpy(static_cast<reshade::runtime*>(rt)->mariusfx_effects_key_data(), data, sizeof(unsigned int) * 4);
+            },
+
+            // ── save_config ────────────────────────────────────────
+            [](reshade::api::effect_runtime *rt) {
+                static_cast<reshade::runtime*>(rt)->mariusfx_save_config();
             },
         };
         g_l.set_host_api(&s_host_api);

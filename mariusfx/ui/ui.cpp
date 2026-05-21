@@ -207,45 +207,59 @@ void render(mfx::runtime *rt)
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,   ImVec2(0, 0));
 
-    // ── New pipeline-editor layout ────────────────────────────────────
-    constexpr float toolbar_h   = 52.0f;
-    constexpr float statusbar_h = 28.0f;
+    // ── Map Studio layout ──────────────────────────────────────────────
+    //
+    //  ┌──────┬──────────────────────────────────────┐
+    //  │ ICON │ HEADER (title + preset + actions)     │
+    //  │ BAR  ├──────────────────┬───────────────────┤
+    //  │      │ Pipeline list    │ Params / Stats /  │
+    //  │      │ (shader list)    │ Settings panel    │
+    //  │      │                  │                   │
+    //  └──────┴──────────────────┴───────────────────┘
+    //
+    constexpr float sidebar_w = 64.0f;
+    constexpr float header_h  = 72.0f;
 
     // App background.
     ImGui::GetWindowDrawList()->AddRectFilled(
         win_pos, ImVec2(win_pos.x + win_size.x, win_pos.y + win_size.y),
         theme::col::bg_app);
 
-    pl_draw_toolbar(rt, win_pos, win_size.x, toolbar_h);
+    // Icon sidebar (full height, left edge).
+    pl_draw_icon_sidebar(win_pos, sidebar_w, win_size.y);
 
-    const float body_y = win_pos.y + toolbar_h;
-    const float body_h = win_size.y - toolbar_h - statusbar_h;
+    // Header bar (next to sidebar, top).
+    const ImVec2 header_origin(win_pos.x + sidebar_w, win_pos.y);
+    const float  header_w = win_size.x - sidebar_w;
+    pl_draw_header(rt, header_origin, header_w, header_h);
 
-    // Two columns: pipeline (left ~42%) and parameters (right).
-    float pipe_w = win_size.x * 0.42f;
-    if (pipe_w < 240.0f) pipe_w = 240.0f;
-    if (pipe_w > 420.0f) pipe_w = 420.0f;
-    const float params_w = win_size.x - pipe_w;
+    // Content area (below header, right of sidebar).
+    const float content_x = win_pos.x + sidebar_w;
+    const float content_y = win_pos.y + header_h;
+    const float content_w = win_size.x - sidebar_w;
+    const float content_h = win_size.y - header_h;
 
-    pl_draw_pipeline(rt, ImVec2(win_pos.x, body_y), pipe_w, body_h);
+    // Two columns: pipeline (left ~42% of content) and right panel.
+    float pipe_w = content_w * 0.42f;
+    if (pipe_w < 220.0f) pipe_w = 220.0f;
+    if (pipe_w > 400.0f) pipe_w = 400.0f;
+    const float params_w = content_w - pipe_w;
+
+    pl_draw_pipeline(rt, ImVec2(content_x, content_y), pipe_w, content_h);
 
     // Right column dispatches by active mode  tab-style swap, no overlay.
-    const ImVec2 right_origin(win_pos.x + pipe_w, body_y);
+    const ImVec2 right_origin(content_x + pipe_w, content_y);
     switch (g_active_sheet) {
     case SHEET_STATISTICS:
-        pl_draw_stats_panel   (rt, right_origin, params_w, body_h);
+        pl_draw_stats_panel   (rt, right_origin, params_w, content_h);
         break;
     case SHEET_SETTINGS:
-        pl_draw_settings_panel(rt, right_origin, params_w, body_h);
+        pl_draw_settings_panel(rt, right_origin, params_w, content_h);
         break;
     default:
-        pl_draw_param_editor  (rt, right_origin, params_w, body_h);
+        pl_draw_param_editor  (rt, right_origin, params_w, content_h);
         break;
     }
-
-    pl_draw_statusbar(rt,
-                      ImVec2(win_pos.x, win_pos.y + win_size.y - statusbar_h),
-                      win_size.x);
 
     // Preset picker (existing, unchanged).
     draw_preset_popup(rt, win_pos, win_size);

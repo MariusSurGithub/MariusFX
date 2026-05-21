@@ -110,7 +110,8 @@ void reshade::runtime::init_gui()
 
 	ImGuiIO &imgui_io = _imgui_context->IO;
 	imgui_io.IniFilename = nullptr;
-	imgui_io.ConfigFlags = ImGuiConfigFlags_DockingEnable | ImGuiConfigFlags_NavEnableKeyboard;
+	imgui_io.ConfigFlags = ImGuiConfigFlags_DockingEnable;
+	imgui_io.ConfigDragClickToInputText = true; // MariusFX: double-click on sliders/drags to type a value
 	imgui_io.BackendFlags = ImGuiBackendFlags_HasMouseCursors | ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
 
 	ImGuiStyle &imgui_style = _imgui_context->Style;
@@ -1348,21 +1349,25 @@ void reshade::runtime::draw_gui()
 		std::any_of(_textures[_preview_texture].shared.begin(), _textures[_preview_texture].shared.end(),
 			[this](const size_t effect_index) { return _effects[effect_index].rendering; }))
 	{
-		if (!_show_overlay)
-		{
-			// Create a temporary viewport window to attach image to when overlay is not open
-			ImGui::SetNextWindowPos(ImVec2(0, 0));
-			ImGui::SetNextWindowSize(ImVec2(imgui_io.DisplaySize.x, imgui_io.DisplaySize.y));
-			ImGui::Begin("Viewport", nullptr,
-				ImGuiWindowFlags_NoDecoration |
-				ImGuiWindowFlags_NoNav |
-				ImGuiWindowFlags_NoMove |
-				ImGuiWindowFlags_NoDocking |
-				ImGuiWindowFlags_NoFocusOnAppearing |
-				ImGuiWindowFlags_NoBringToFrontOnFocus |
-				ImGuiWindowFlags_NoBackground);
-			ImGui::End();
-		}
+		// DISABLED: Testing if this causes the small rectangle in top-left
+		// if (!_show_overlay)
+		// {
+		// 	// Create a temporary viewport window to attach image to when overlay is not open
+		// 	ImGui::SetNextWindowPos(ImVec2(0, 0));
+		// 	ImGui::SetNextWindowSize(ImVec2(imgui_io.DisplaySize.x, imgui_io.DisplaySize.y));
+		// 	ImGui::Begin("Viewport", nullptr,
+		// 		ImGuiWindowFlags_NoDecoration |
+		// 		ImGuiWindowFlags_NoNav |
+		// 		ImGuiWindowFlags_NoMove |
+		// 		ImGuiWindowFlags_NoDocking |
+		// 		ImGuiWindowFlags_NoFocusOnAppearing |
+		// 		ImGuiWindowFlags_NoBringToFrontOnFocus |
+		// 		ImGuiWindowFlags_NoBackground |
+		// 		ImGuiWindowFlags_NoTitleBar |
+		// 		ImGuiWindowFlags_NoScrollbar |
+		// 		ImGuiWindowFlags_NoScrollWithMouse);
+		// 	ImGui::End();
+		// }
 
 		// Scale image to fill the entire viewport by default
 		ImVec2 preview_min = ImVec2(0, 0);
@@ -4566,10 +4571,11 @@ void reshade::runtime::draw_code_editor(editor_instance &instance)
 	_ignore_shortcuts |= is_focused;
 
 	// Disable keyboard navigation starting with next frame when editor is focused so that the Alt key can be used without it switching focus to the menu bar
-	if (is_focused)
-		_imgui_context->IO.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
-	else // Enable navigation again if focus is lost
-		_imgui_context->IO.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	// DISABLED: NavEnableKeyboard causes debug overlay in top-left corner
+	// if (is_focused)
+	// 	_imgui_context->IO.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+	// else // Enable navigation again if focus is lost
+	// 	_imgui_context->IO.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 }
 
 bool reshade::runtime::init_imgui_resources()

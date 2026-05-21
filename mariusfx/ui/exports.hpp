@@ -63,6 +63,7 @@ constexpr unsigned int MFXUI_ABI_VERSION = 2;
 // is missing instead of crashing.
 struct MfxuiHostAPI
 {
+    // ── v2 original (prefix — do not reorder) ──────────────────────
     void (*get_technique_timing)(reshade::api::effect_runtime *rt,
                                  unsigned long long tech_handle,
                                  unsigned long long *cpu_ns,
@@ -70,6 +71,28 @@ struct MfxuiHostAPI
     bool (*get_performance_mode)(reshade::api::effect_runtime *rt);
     void (*set_performance_mode)(reshade::api::effect_runtime *rt, bool v);
     void (*reload_all)          (reshade::api::effect_runtime *rt);
+
+    // ── v2+ extensions (appended — old hosts leave these null) ─────
+    // Screenshot config
+    void (*get_screenshot_path)   (reshade::api::effect_runtime *rt, char *buf, unsigned int buf_sz);
+    void (*set_screenshot_path)   (reshade::api::effect_runtime *rt, const char *path);
+    void (*get_screenshot_name)   (reshade::api::effect_runtime *rt, char *buf, unsigned int buf_sz);
+    void (*set_screenshot_name)   (reshade::api::effect_runtime *rt, const char *name);
+    unsigned int (*get_screenshot_format) (reshade::api::effect_runtime *rt);
+    void (*set_screenshot_format) (reshade::api::effect_runtime *rt, unsigned int fmt);
+    unsigned int (*get_screenshot_quality)(reshade::api::effect_runtime *rt);
+    void (*set_screenshot_quality)(reshade::api::effect_runtime *rt, unsigned int q);
+
+    // Hotkey config — key_data is unsigned int[4]: [0]=VK, [1..3]=modifiers
+    void (*get_overlay_key)   (reshade::api::effect_runtime *rt, unsigned int out[4]);
+    void (*set_overlay_key)   (reshade::api::effect_runtime *rt, const unsigned int data[4]);
+    void (*get_screenshot_key)(reshade::api::effect_runtime *rt, unsigned int out[4]);
+    void (*set_screenshot_key)(reshade::api::effect_runtime *rt, const unsigned int data[4]);
+    void (*get_effects_key)   (reshade::api::effect_runtime *rt, unsigned int out[4]);
+    void (*set_effects_key)   (reshade::api::effect_runtime *rt, const unsigned int data[4]);
+
+    // Persist config to disk
+    void (*save_config)(reshade::api::effect_runtime *rt);
 };
 
 // ── Entry points ────────────────────────────────────────────────────────────

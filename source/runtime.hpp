@@ -431,6 +431,16 @@ namespace reshade
 		// where the full `technique` struct is visible.
 		void mariusfx_get_technique_timing(api::effect_technique tech,
 		                                   uint64_t *cpu_ns, uint64_t *gpu_ns) const;
+
+		// Screenshot config accessors (used by MariusFX UI via host API bridge)
+		std::filesystem::path &mariusfx_screenshot_path() { return _screenshot_path; }
+		std::string           &mariusfx_screenshot_name() { return _screenshot_name; }
+		unsigned int          &mariusfx_screenshot_format() { return _screenshot_format; }
+		unsigned int          &mariusfx_screenshot_quality() { return _screenshot_jpeg_quality; }
+		unsigned int          *mariusfx_overlay_key_data() { return _overlay_key_data; }
+		unsigned int          *mariusfx_screenshot_key_data() { return _screenshot_key_data; }
+		unsigned int          *mariusfx_effects_key_data() { return _effects_key_data; }
+		void                   mariusfx_save_config() { save_config(); }
 	private:
 
 		bool init_imgui_resources();

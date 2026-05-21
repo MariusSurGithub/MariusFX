@@ -1,14 +1,16 @@
 ﻿// ============================================================================ // ui_chrome.inl - included by ui.cpp inside namespace mariusfx::ui::{anonymous}. // This is not a stand-alone translation unit. It exists only as a logical // module to keep ui.cpp browsable. Do not compile or include directly. // ============================================================================ 
+// Forward declarations for glyphs used by draw_preset_popup (defined further below).
+inline void glyph_folder(ImDrawList *dl, ImVec2 c, ImU32 color);
+inline void glyph_chevron(ImDrawList *dl, ImVec2 c, int dir, ImU32 color);
+inline void glyph_search(ImDrawList *dl, ImVec2 c, ImU32 color);
+
 // ── Preset picker popup ────────────────────────────────────────────────────
-// Floating window listing every `.ini` in the current preset folder.
+// File browser with folder navigation for preset packs.
 //
-//   Top:     title, folder subtext.
-//   Middle:  search field, scrollable list. Each row has on-hover action
-//            glyphs (rename  duplicate  delete) and a current-marker dot.
-//            Clicking anywhere outside the action zone loads the preset.
-//   Bottom:  "+ New" creates an empty preset using the current settings as
-//            a template (export_current_preset); "Save current" overwrites
-//            the loaded preset on disk; "Open folder" shells out.
+//   Top:     breadcrumb path + back button.
+//   Middle:  search field, scrollable list with folders first, then .ini files.
+//            Folders are clickable to navigate into. Files have action glyphs.
+//   Bottom:  "+ New" / "Save current" / "Refresh".
 //
 // Closes when the user clicks outside, presses Escape, or toggles the
 // trigger button again.
@@ -18,30 +20,31 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
     using namespace theme;
 
     // Lazy init: if we've never scanned the preset folder, do it now.
-    // This happens on the first time the user opens the preset picker.
     if (g_preset_files_folder.empty())
     {
         const std::string cur = current_preset_path(rt);
         if (!cur.empty()) {
             fs::path p(cur);
-            refresh_preset_files(p.parent_path().string());
+            const std::string folder = p.parent_path().string();
+            g_preset_root_folder = folder;
+            refresh_preset_files(folder);
         }
         else {
-            // Fallback: no preset loaded yet. Scan the default ReShade preset
-            // folder (same directory as the DLL). The runtime will tell us.
             char buf[512];
             size_t s = sizeof(buf);
             rt->get_current_preset_path(buf, &s);
             if (buf[0]) {
                 fs::path p(buf);
-                refresh_preset_files(p.parent_path().string());
+                const std::string folder = p.parent_path().string();
+                g_preset_root_folder = folder;
+                refresh_preset_files(folder);
             }
         }
     }
 
     // ── Position + clamping ──────────────────────────────────────────────
     const float pw = g_preset_popup_width;
-    const float ph = 380.0f;
+    const float ph = 440.0f;
     float px = g_preset_popup_anchor.x;
     float py = g_preset_popup_anchor.y;
     if (px + pw > win_pos.x + win_size.x - 8.0f) px = win_pos.x + win_size.x - pw - 8.0f;
@@ -82,37 +85,73 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
     else if (!focused && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
     {
         const ImVec2 m = ImGui::GetIO().MousePos;
-        // Anything outside our window bounds closes us. We re-poll the
-        // window rect because ImGui has clipped/translated it.
         const ImVec2 wa = ImGui::GetWindowPos();
         const ImVec2 ws = ImGui::GetWindowSize();
         if (m.x < wa.x || m.y < wa.y || m.x > wa.x + ws.x || m.y > wa.y + ws.y)
             g_preset_popup_open = false;
     }
 
-    // ── Header (compact: PRESETS label + count + trimmed folder path) ────
+    // ── Header: Back button + breadcrumb path ────────────────────────────
     {
         ImDrawList *dlh = ImGui::GetWindowDrawList();
         const ImVec2 hp = ImGui::GetCursorScreenPos();
-        char hdr[64];
-        snprintf(hdr, sizeof(hdr), "PRESETS    %d", (int)g_preset_files.size());
-        dlh->AddText(hp, col::text_disabled, hdr);
-
-        const std::string &folder = g_preset_files_folder;
-        char trimmed[260] = "";
-        const char *f = folder.c_str();
-        if (folder.size() > 60)
-            snprintf(trimmed, sizeof(trimmed), "%s", f + folder.size() - 59);
-        else
-            copy_str(trimmed, sizeof(trimmed), f);
-        const float tw = ImGui::CalcTextSize(trimmed).x;
         const float ww = ImGui::GetContentRegionAvail().x;
-        dlh->AddText(ImVec2(hp.x + ww - tw, hp.y),
-                     col::text_dimmest, trimmed[0] ? trimmed : "(no folder)");
-        ImGui::Dummy(ImVec2(0, ImGui::GetTextLineHeight() + 8.0f));
+        const bool can_go_back = !g_preset_nav_history.empty();
+
+        // Back arrow button
+        const float back_btn_w = 28.0f, back_btn_h = 26.0f;
+        const ImVec2 ba(hp.x, hp.y);
+        const ImVec2 bb(hp.x + back_btn_w, hp.y + back_btn_h);
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        const bool back_hov = can_go_back && mp.x >= ba.x && mp.x <= bb.x && mp.y >= ba.y && mp.y <= bb.y;
+
+        if (can_go_back) {
+            dlh->AddRectFilled(ba, bb, back_hov ? col::bg_card_hover : col::bg_card, 6.0f);
+            dlh->AddRect(ba, bb, col::border_subtle, 6.0f);
+        }
+        // Left arrow glyph
+        {
+            const ImVec2 ctr((ba.x + bb.x) * 0.5f, (ba.y + bb.y) * 0.5f);
+            const ImU32 ac = can_go_back ? (back_hov ? col::accent : col::text_secondary) : col::text_dimmest;
+            dlh->AddLine(ImVec2(ctr.x + 3, ctr.y - 4), ImVec2(ctr.x - 3, ctr.y), ac, 1.8f);
+            dlh->AddLine(ImVec2(ctr.x - 3, ctr.y), ImVec2(ctr.x + 3, ctr.y + 4), ac, 1.8f);
+        }
+
+        // Invisible button for back
+        ImGui::SetCursorScreenPos(ba);
+        ImGui::InvisibleButton("##mfx_preset_back", ImVec2(back_btn_w, back_btn_h));
+        if (can_go_back && ImGui::IsItemClicked())
+            navigate_preset_back();
+        if (back_hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+        // Breadcrumb: show current folder name relative to root
+        const float bread_x = hp.x + back_btn_w + 8.0f;
+        const std::string cur_folder_name = folder_display_name(g_preset_files_folder);
+        char breadcrumb[320] = "";
+        if (g_preset_nav_history.empty()) {
+            snprintf(breadcrumb, sizeof(breadcrumb), "%s", cur_folder_name.c_str());
+        } else {
+            // Show: root > ... > current
+            const std::string root_name = folder_display_name(g_preset_root_folder);
+            if (g_preset_nav_history.size() == 1)
+                snprintf(breadcrumb, sizeof(breadcrumb), "%s > %s", root_name.c_str(), cur_folder_name.c_str());
+            else
+                snprintf(breadcrumb, sizeof(breadcrumb), "%s > ... > %s", root_name.c_str(), cur_folder_name.c_str());
+        }
+        const float bread_y = hp.y + (back_btn_h - ImGui::GetTextLineHeight()) * 0.5f;
+        dlh->AddText(ImVec2(bread_x, bread_y), col::text_primary, breadcrumb);
+
+        // Item count on the right
+        char count_str[32];
+        snprintf(count_str, sizeof(count_str), "%d files  %d folders",
+                 (int)g_preset_files.size(), (int)g_preset_subdirs.size());
+        const float cw = ImGui::CalcTextSize(count_str).x;
+        dlh->AddText(ImVec2(hp.x + ww - cw, bread_y), col::text_dimmest, count_str);
+
+        ImGui::Dummy(ImVec2(0, back_btn_h + 6.0f));
     }
 
-    // ── Search (rounded card style, matches the pipeline column) ─────────
+    // ── Search (rounded card style) ─────────────────────────────────────
     {
         ImDrawList *dls = ImGui::GetWindowDrawList();
         const float sb_h = 32.0f;
@@ -130,22 +169,77 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
         ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  ImVec4(0,0,0,0));
         ImGui::PushStyleColor(ImGuiCol_Text,           to_vec4(col::text_primary));
         ImGui::PushItemWidth(sb_w - 36.0f);
-        ImGui::InputTextWithHint("##mfx_preset_search", "Filter presets",
+        ImGui::InputTextWithHint("##mfx_preset_search", "Search presets & folders...",
                                  g_preset_search, sizeof(g_preset_search));
         ImGui::PopItemWidth();
         ImGui::PopStyleColor(4);
         ImGui::Dummy(ImVec2(0, sb_h + 6.0f));
     }
 
-    // ── List ─────────────────────────────────────────────────────────────
+    // ── List (folders first, then .ini files) ────────────────────────────
     const std::string current = current_preset_path(rt);
     const float footer_h = 50.0f;
-    const float list_h   = ph - 100.0f - footer_h;
+    const float list_h   = ph - 140.0f - footer_h;
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 2));
     ImGui::BeginChild("##mfx_preset_list", ImVec2(0, list_h), false);
 
     int visible_rows = 0;
+    const float row_h = 32.0f;
+
+    // ── Folder rows ──────────────────────────────────────────────────────
+    for (int di = 0; di < (int)g_preset_subdirs.size(); ++di)
+    {
+        const std::string &dir_path = g_preset_subdirs[di];
+        const std::string dir_name  = folder_display_name(dir_path);
+        if (g_preset_search[0] && !icase_contains(dir_name.c_str(), g_preset_search))
+            continue;
+        ++visible_rows;
+
+        const ImVec2 ra = ImGui::GetCursorScreenPos();
+        const float  row_w = ImGui::GetContentRegionAvail().x;
+        const ImVec2 rb(ra.x + row_w, ra.y + row_h);
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+
+        const ImVec2 mp = ImGui::GetIO().MousePos;
+        const bool row_hov = mp.x >= ra.x && mp.x <= rb.x && mp.y >= ra.y && mp.y <= rb.y;
+
+        dl->AddRectFilled(ra, rb, row_hov ? col::bg_card_hover : IM_COL32(0,0,0,0), 6.0f);
+
+        // Folder icon
+        const ImVec2 icon_c(ra.x + 16.0f, (ra.y + rb.y) * 0.5f);
+        glyph_folder(dl, icon_c, row_hov ? col::accent : col::text_dim);
+
+        // Folder name
+        dl->AddText(ImVec2(ra.x + 30.0f, ra.y + (row_h - ImGui::GetTextLineHeight()) * 0.5f),
+                    row_hov ? col::accent_strong : col::text_secondary,
+                    dir_name.c_str());
+
+        // Right chevron indicating "enter"
+        const ImVec2 chev_c(rb.x - 14.0f, (ra.y + rb.y) * 0.5f);
+        glyph_chevron(dl, chev_c, 1, row_hov ? col::accent : col::text_dimmest);
+
+        // Hit area
+        ImGui::SetCursorScreenPos(ra);
+        char fid[32]; snprintf(fid, sizeof(fid), "##dir_row_%d", di);
+        ImGui::InvisibleButton(fid, ImVec2(row_w, row_h));
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+            navigate_preset_folder(dir_path);
+        if (row_hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+
+    // Separator between folders and files (if both present)
+    if (!g_preset_subdirs.empty() && !g_preset_files.empty() && visible_rows > 0)
+    {
+        ImGui::Dummy(ImVec2(0, 2.0f));
+        ImDrawList *dl = ImGui::GetWindowDrawList();
+        const ImVec2 sp = ImGui::GetCursorScreenPos();
+        const float sw = ImGui::GetContentRegionAvail().x;
+        dl->AddLine(ImVec2(sp.x + 8.0f, sp.y), ImVec2(sp.x + sw - 8.0f, sp.y), col::border_subtle);
+        ImGui::Dummy(ImVec2(0, 4.0f));
+    }
+
+    // ── Preset file rows ─────────────────────────────────────────────────
     for (int i = 0; i < (int)g_preset_files.size(); ++i)
     {
         const std::string &path = g_preset_files[i];
@@ -157,19 +251,15 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
         const bool is_current = (path == current);
         const bool is_renaming = (g_preset_rename_idx == i);
 
-        // Reserve a uniform row height regardless of mode.
-        const float row_h = 32.0f;
         const ImVec2 ra   = ImGui::GetCursorScreenPos();
         const float  row_w= ImGui::GetContentRegionAvail().x;
         const ImVec2 rb   = ImVec2(ra.x + row_w, ra.y + row_h);
 
         ImDrawList *dl = ImGui::GetWindowDrawList();
 
-        // Default background.
         if (is_current)
             dl->AddRectFilled(ra, rb, col::accent_subtle, 6.0f);
 
-        // Mouse hover (computed manually so action sub-buttons keep priority).
         const ImVec2 mp = ImGui::GetIO().MousePos;
         const bool   row_hov = mp.x >= ra.x && mp.x <= rb.x && mp.y >= ra.y && mp.y <= rb.y;
         if (row_hov && !is_current)
@@ -182,7 +272,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
 
         if (is_renaming)
         {
-            // ── Inline rename field ──────────────────────────────────
             ImGui::SetCursorScreenPos(ImVec2(ra.x + 22.0f, ra.y + 3.0f));
             ImGui::SetNextItemWidth(row_w - 110.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 4));
@@ -222,7 +311,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
         }
         else if (g_preset_delete_confirm == i)
         {
-            // ── Inline delete confirmation ───────────────────────────
             dl->AddText(ImVec2(ra.x + 22.0f, ra.y + (row_h - ImGui::GetTextLineHeight()) * 0.5f),
                         col::dot_red, "Delete this preset?");
             ImGui::SetCursorScreenPos(ImVec2(rb.x - 130.0f, ra.y + 4.0f));
@@ -245,13 +333,11 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
         }
         else
         {
-            // ── Normal row ───────────────────────────────────────────
             dl->AddText(ImVec2(ra.x + 22.0f, ra.y + (row_h - ImGui::GetTextLineHeight()) * 0.5f),
                         is_current ? col::accent_strong : col::text_secondary,
                         name.c_str());
 
-            // Action glyphs on hover.
-            int  action = -1;        // 0=rename, 1=duplicate, 2=delete
+            int  action = -1;
             bool any_btn_hov = false;
             if (row_hov)
             {
@@ -270,7 +356,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
 
                     if (b == 0)
                     {
-                        // Pencil: diagonal line + small triangle tip.
                         dl->AddLine(ImVec2(ctr.x - 4, ctr.y + 4),
                                     ImVec2(ctr.x + 3, ctr.y - 3), c, 1.5f);
                         dl->AddLine(ImVec2(ctr.x + 3, ctr.y - 3),
@@ -280,7 +365,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
                     }
                     else if (b == 1)
                     {
-                        // Duplicate: two overlapping squares.
                         dl->AddRect(ImVec2(ctr.x - 5, ctr.y - 5),
                                     ImVec2(ctr.x + 2, ctr.y + 2), c, 1.0f, 0, 1.2f);
                         dl->AddRect(ImVec2(ctr.x - 2, ctr.y - 2),
@@ -288,7 +372,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
                     }
                     else
                     {
-                        // Trash / X.
                         dl->AddLine(ImVec2(ctr.x - 4, ctr.y - 4),
                                     ImVec2(ctr.x + 4, ctr.y + 4), c, 1.5f);
                         dl->AddLine(ImVec2(ctr.x + 4, ctr.y - 4),
@@ -299,7 +382,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
                 }
             }
 
-            // Whole-row hit area (consumes the rest of the click).
             ImGui::SetCursorScreenPos(ra);
             char rid[32]; snprintf(rid, sizeof(rid), "##preset_row_%d", i);
             ImGui::InvisibleButton(rid, ImVec2(row_w, row_h));
@@ -312,8 +394,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
             }
             else if (action == 1)
             {
-                // Duplicate = export the CURRENT live state into <name>_copy.ini
-                // if duplicating the loaded preset, else copy_file the source.
                 fs::path src(path);
                 fs::path dst = src.parent_path() / (preset_basename(path) + "_copy.ini");
                 int n = 2;
@@ -342,8 +422,9 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
         ImGui::Dummy(ImVec2(0, 12));
         ImGui::Indent(12);
         colored_text(col::text_dimmer,
-                     g_preset_files.empty() ? "No .ini files in this folder."
-                                            : "No preset matches your filter.");
+                     (g_preset_files.empty() && g_preset_subdirs.empty())
+                         ? "Empty folder."
+                         : "No match for your filter.");
         ImGui::Unindent(12);
     }
 
@@ -354,8 +435,6 @@ void draw_preset_popup(mfx::runtime *rt, ImVec2 win_pos, ImVec2 win_size)
     ImGui::Dummy(ImVec2(0, 4));
     if (g_preset_new_mode)
     {
-        // Inline "name your new preset" entry  saves the CURRENT live
-        // state into <name>.ini and switches to it.
         ImGui::SetNextItemWidth(-160.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 6));
         ImGui::SetKeyboardFocusHere();
@@ -516,8 +595,132 @@ inline void glyph_wave(ImDrawList *dl, ImVec2 c, float w, ImU32 color)
     }
 }
 
-// ── Toolbar (52px tall) ────────────────────────────────────────────────────
-void pl_draw_toolbar(mfx::runtime *rt, ImVec2 origin, float width, float h)
+// ── Glyphs for icon sidebar ────────────────────────────────────────────────
+inline void glyph_layers(ImDrawList *dl, ImVec2 c, float s, ImU32 color)
+{
+    // Stacked-layers icon (shaders/pipeline)
+    const float h = s * 0.28f;
+    for (int i = 0; i < 3; ++i) {
+        const float y = c.y - s * 0.3f + i * h * 1.5f;
+        const float w = s * 0.45f - i * s * 0.06f;
+        dl->AddLine(ImVec2(c.x - w, y), ImVec2(c.x, y - h), color, 1.6f);
+        dl->AddLine(ImVec2(c.x, y - h), ImVec2(c.x + w, y), color, 1.6f);
+        dl->AddLine(ImVec2(c.x + w, y), ImVec2(c.x, y + h), color, 1.6f);
+        dl->AddLine(ImVec2(c.x, y + h), ImVec2(c.x - w, y), color, 1.6f);
+    }
+}
+inline void glyph_chart(ImDrawList *dl, ImVec2 c, float s, ImU32 color)
+{
+    // Bar chart icon (statistics)
+    const float bw = s * 0.14f;
+    const float base_y = c.y + s * 0.35f;
+    const float heights[4] = { 0.3f, 0.55f, 0.75f, 0.45f };
+    for (int i = 0; i < 4; ++i) {
+        const float x = c.x - s * 0.3f + i * s * 0.2f;
+        const float h = s * heights[i];
+        dl->AddRectFilled(ImVec2(x, base_y - h), ImVec2(x + bw, base_y), color, 1.0f);
+    }
+}
+inline void glyph_cog(ImDrawList *dl, ImVec2 c, float s, ImU32 color)
+{
+    // Gear/cog icon (settings)
+    const float r1 = s * 0.22f, r2 = s * 0.38f;
+    dl->AddCircle(c, r1, color, 16, 1.5f);
+    for (int i = 0; i < 8; ++i) {
+        const float a = (float)i * (IM_PI * 2.0f / 8.0f);
+        dl->AddLine(ImVec2(c.x + std::cos(a) * r1, c.y + std::sin(a) * r1),
+                    ImVec2(c.x + std::cos(a) * r2, c.y + std::sin(a) * r2),
+                    color, 1.5f);
+    }
+}
+
+// ── Vertical icon sidebar (Map Studio style) ──────────────────────────────
+// Renders a narrow column on the far left with mode icons + labels.
+// Each icon button switches the right panel mode (SHEET_NONE = pipeline
+// params, SHEET_STATISTICS, SHEET_SETTINGS).
+void pl_draw_icon_sidebar(ImVec2 origin, float width, float height)
+{
+    using namespace theme;
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    const ImVec2 bk_end(origin.x + width, origin.y + height);
+
+    // Background
+    dl->AddRectFilled(origin, bk_end, col::bg_icon_sidebar);
+    // Right border
+    dl->AddLine(ImVec2(bk_end.x - 1, origin.y),
+                ImVec2(bk_end.x - 1, bk_end.y), col::border_default);
+
+    // Title label at top
+    const float cx = origin.x + width * 0.5f;
+    float y = origin.y + 16.0f;
+
+    // Brand glyph (small wave)
+    {
+        const float sz = 28.0f;
+        const ImVec2 a(cx - sz * 0.5f, y);
+        const ImVec2 b(cx + sz * 0.5f, y + sz);
+        dl->AddRectFilled(a, b, col::accent_subtle, 7.0f);
+        dl->AddRect      (a, b, col::accent,        7.0f);
+        glyph_wave(dl, ImVec2(cx, y + sz * 0.5f), 16.0f, col::accent_strong);
+        y += sz + 20.0f;
+    }
+
+    // Mode buttons
+    struct SidebarEntry {
+        const char *id;
+        const char *label;
+        Sheet       sheet;
+        void (*glyph)(ImDrawList*, ImVec2, float, ImU32);
+    };
+    const SidebarEntry entries[] = {
+        { "##sb_shaders",  "Shaders",  SHEET_NONE,       glyph_layers },
+        { "##sb_stats",    "Stats",    SHEET_STATISTICS,  glyph_chart  },
+        { "##sb_settings", "Settings", SHEET_SETTINGS,    glyph_cog    },
+    };
+
+    for (const auto &e : entries) {
+        const float btn_h = 56.0f;
+        const bool  active = (g_active_sheet == e.sheet);
+        const ImVec2 ba(origin.x + 4.0f, y);
+        const ImVec2 bb(origin.x + width - 4.0f, y + btn_h);
+        const ImVec2 ic(cx, ba.y + 20.0f);
+
+        ImGui::SetCursorScreenPos(ba);
+        ImGui::InvisibleButton(e.id, ImVec2(bb.x - ba.x, btn_h));
+        const bool hov = ImGui::IsItemHovered();
+        if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        if (ImGui::IsItemClicked()) {
+            g_active_sheet = active ? SHEET_NONE : e.sheet;
+            // For shaders, always go to SHEET_NONE
+            if (e.sheet == SHEET_NONE) g_active_sheet = SHEET_NONE;
+        }
+
+        // Background + accent bar for active
+        if (active) {
+            dl->AddRectFilled(ba, bb, col::accent_subtle, 8.0f);
+            dl->AddRectFilled(ImVec2(ba.x, ba.y + 8), ImVec2(ba.x + 2.5f, bb.y - 8),
+                              col::accent, 1.5f);
+        } else if (hov) {
+            dl->AddRectFilled(ba, bb, col::bg_card_hover, 8.0f);
+        }
+
+        // Icon
+        const ImU32 icon_col = active ? col::accent_strong : (hov ? col::text_primary : col::text_dim);
+        e.glyph(dl, ic, 24.0f, icon_col);
+
+        // Label
+        const ImU32 lbl_col = active ? col::accent_strong : (hov ? col::text_secondary : col::text_dimmer);
+        const float lw = ImGui::CalcTextSize(e.label).x;
+        dl->AddText(ImVec2(cx - lw * 0.5f, ba.y + 38.0f), lbl_col, e.label);
+
+        y += btn_h + 4.0f;
+    }
+}
+
+// ── Header bar (replaces old toolbar) ──────────────────────────────────────
+// Horizontal title bar: brand title + subtitle on the left, preset pill +
+// dock toggle + reload on the right. Sits to the right of the icon sidebar.
+void pl_draw_header(mfx::runtime *rt, ImVec2 origin, float width, float h)
 {
     using namespace theme;
     ImDrawList *dl = ImGui::GetWindowDrawList();
@@ -526,30 +729,83 @@ void pl_draw_toolbar(mfx::runtime *rt, ImVec2 origin, float width, float h)
                 ImVec2(origin.x + width, origin.y + h - 1),
                 col::border_default);
 
-    const float pad = 14.0f, gap = 10.0f;
+    const float pad = 18.0f;
     const float cy  = origin.y + h * 0.5f;
-    float x = origin.x + pad;
 
-    // Logo: stacked-wave brand glyph.
+    // Left: Title + subtitle
     {
-        const float sz = 32.0f;
-        const ImVec2 a(x, cy - sz * 0.5f);
-        const ImVec2 b(x + sz, cy + sz * 0.5f);
-        dl->AddRectFilled(a, b, col::accent_subtle, 8.0f);
-        dl->AddRect      (a, b, col::accent,        8.0f);
-        glyph_wave(dl, ImVec2(a.x + sz * 0.5f, a.y + sz * 0.5f), 18.0f, col::accent_strong);
-        x += sz + gap + 4.0f;
+        const float tx = origin.x + pad;
+        dl->AddText(ImVec2(tx, origin.y + 14.0f), col::text_dimmest, "MARIUSFX");
+        // Context-dependent subtitle
+        const char *subtitle = "Pipeline Editor";
+        if (g_active_sheet == SHEET_STATISTICS) subtitle = "Performance";
+        else if (g_active_sheet == SHEET_SETTINGS) subtitle = "Settings";
+        dl->AddText(ImVec2(tx, origin.y + 14.0f + ImGui::GetTextLineHeight() + 2.0f),
+                    col::text_primary, subtitle);
     }
 
-    // Preset pill.
+    // Right cluster (right-to-left)
+    float right_x = origin.x + width - pad;
+    const float gap = 8.0f;
+
+    auto icon_btn = [&](const char *id, bool active) -> std::pair<ImVec2, bool> {
+        const float bw = 34.0f, bh = 32.0f;
+        right_x -= bw;
+        const ImVec2 a(right_x, cy - bh * 0.5f);
+        const ImVec2 b(right_x + bw, cy + bh * 0.5f);
+        ImGui::SetCursorScreenPos(a);
+        ImGui::InvisibleButton(id, ImVec2(bw, bh));
+        const bool hov = ImGui::IsItemHovered();
+        const bool clk = ImGui::IsItemClicked();
+        if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        dl->AddRectFilled(a, b, (hov || active) ? col::bg_card_hover : col::bg_card, 8.0f);
+        dl->AddRect      (a, b, active ? col::border_accent : col::border_subtle, 8.0f);
+        right_x -= gap;
+        return { ImVec2((a.x + b.x) * 0.5f, cy), clk };
+    };
+
+    // Dock toggle
+    {
+        auto [cc, clk] = icon_btn("##mfx_dock", false);
+        const ImVec2 ga(cc.x - 7.0f, cc.y - 7.0f);
+        const ImVec2 gb(cc.x + 7.0f, cc.y + 7.0f);
+        dl->AddRect(ga, gb, col::text_dim, 1.0f, 0, 1.2f);
+        if (g_dock_side == DOCK_LEFT)
+            dl->AddRectFilled(ga, ImVec2(ga.x + (gb.x - ga.x) * 0.42f, gb.y), col::accent);
+        else
+            dl->AddRectFilled(ImVec2(gb.x - (gb.x - ga.x) * 0.42f, ga.y), gb, col::accent);
+        if (clk) {
+            g_dock_side = (g_dock_side == DOCK_LEFT) ? DOCK_RIGHT : DOCK_LEFT;
+            g_force_size = true;
+        }
+    }
+
+    // Reload button
+    {
+        auto [cc, clk] = icon_btn("##mfx_reload", false);
+        // Circular-arrow glyph
+        const float r = 6.0f;
+        dl->PathClear();
+        dl->PathArcTo(cc, r, -IM_PI * 0.8f, IM_PI * 0.6f, 16);
+        dl->PathStroke(col::text_dim, 0, 1.5f);
+        // Arrow tip
+        const float ax = cc.x + r * std::cos(IM_PI * 0.6f);
+        const float ay = cc.y + r * std::sin(IM_PI * 0.6f);
+        dl->AddTriangleFilled(
+            ImVec2(ax - 3, ay - 4), ImVec2(ax + 3, ay - 1), ImVec2(ax, ay + 3), col::text_dim);
+        if (clk) rt_reload_all(rt);
+    }
+
+    // Preset pill
     {
         const std::string cur_name = preset_basename(current_preset_path(rt));
         const char *label = cur_name.empty() ? "(no preset)" : cur_name.c_str();
-        const float pill_h = 32.0f;
+        const float pill_h = 34.0f;
         const float tx_w   = ImGui::CalcTextSize(label).x;
         const float pw     = std::max(170.0f, tx_w + 64.0f);
-        const ImVec2 a(x, cy - pill_h * 0.5f);
-        const ImVec2 b(x + pw, cy + pill_h * 0.5f);
+        right_x -= pw;
+        const ImVec2 a(right_x, cy - pill_h * 0.5f);
+        const ImVec2 b(right_x + pw, cy + pill_h * 0.5f);
 
         ImGui::SetCursorScreenPos(a);
         ImGui::InvisibleButton("##mfx_preset_pill", ImVec2(pw, pill_h));
@@ -569,59 +825,8 @@ void pl_draw_toolbar(mfx::runtime *rt, ImVec2 origin, float width, float h)
                     col::text_primary, label);
         glyph_chevron(dl, ImVec2(b.x - 14.0f, cy + 1.0f), 0,
                       g_preset_popup_open ? col::accent : col::text_dim);
-        x += pw + gap;
+        right_x -= gap;
     }
-
-    // Right-cluster icons (right-to-left).
-    float right_x = origin.x + width - pad;
-    auto icon_btn = [&](const char *id, bool active) -> std::pair<ImVec2, bool> {
-        const float bw = 32.0f, bh = 30.0f;
-        right_x -= bw;
-        const ImVec2 a(right_x, cy - bh * 0.5f);
-        const ImVec2 b(right_x + bw, cy + bh * 0.5f);
-        ImGui::SetCursorScreenPos(a);
-        ImGui::InvisibleButton(id, ImVec2(bw, bh));
-        const bool hov = ImGui::IsItemHovered();
-        const bool clk = ImGui::IsItemClicked();
-        if (hov) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-        dl->AddRectFilled(a, b, (hov || active) ? col::bg_card_hover : col::bg_card, 6.0f);
-        dl->AddRect      (a, b, active ? col::border_accent : col::border_default, 6.0f);
-        right_x -= 6.0f;
-        return { ImVec2((a.x + b.x) * 0.5f, cy), clk };
-    };
-
-    // Dock toggle.
-    {
-        auto [cc, clk] = icon_btn("##mfx_dock", false);
-        const ImVec2 ga(cc.x - 7.0f, cc.y - 7.0f);
-        const ImVec2 gb(cc.x + 7.0f, cc.y + 7.0f);
-        dl->AddRect(ga, gb, col::text_dim, 1.0f, 0, 1.2f);
-        if (g_dock_side == DOCK_LEFT)
-            dl->AddRectFilled(ga, ImVec2(ga.x + (gb.x - ga.x) * 0.42f, gb.y), col::accent);
-        else
-            dl->AddRectFilled(ImVec2(gb.x - (gb.x - ga.x) * 0.42f, ga.y), gb, col::accent);
-        if (clk) {
-            g_dock_side = (g_dock_side == DOCK_LEFT) ? DOCK_RIGHT : DOCK_LEFT;
-            g_force_size = true;
-        }
-    }
-    // Settings.
-    {
-        const bool act = g_active_sheet == SHEET_SETTINGS;
-        auto [cc, clk] = icon_btn("##mfx_settings", act);
-        glyph_gear(dl, cc, act ? col::accent : col::text_dim);
-        if (clk) g_active_sheet = act ? SHEET_NONE : SHEET_SETTINGS;
-    }
-    // Stats.
-    {
-        const bool act = g_active_sheet == SHEET_STATISTICS;
-        auto [cc, clk] = icon_btn("##mfx_stats", act);
-        glyph_bars(dl, cc, act ? col::accent : col::text_dim);
-        if (clk) g_active_sheet = act ? SHEET_NONE : SHEET_STATISTICS;
-    }
-    (void)x; // The middle space between the preset pill and the right
-             // cluster is intentionally left empty  the shader search
-             // bar lives at the top of the pipeline column instead.
 }
 
 // Render `text` at `pos` with the substring matching `needle` highlighted

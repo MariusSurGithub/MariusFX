@@ -84,28 +84,28 @@ void apply_theme()
     set(ImGuiCol_Text,                col::text_primary);
     set(ImGuiCol_TextDisabled,        col::text_dimmer);
 
-    // ── Geometry ────────────────────────────────────────────────────────
-    s.WindowPadding         = ImVec2(0, 0);    // we own the layout, no implicit padding
-    s.FramePadding          = ImVec2(8, 5);
-    s.ItemSpacing           = ImVec2(8, 6);
-    s.ItemInnerSpacing      = ImVec2(6, 4);
-    s.TouchExtraPadding     = ImVec2(0, 0);
-    s.IndentSpacing         = 14.0f;
-    s.ScrollbarSize         = 6.0f;
-    s.GrabMinSize           = 9.0f;
-    s.WindowBorderSize      = 1.0f;
-    s.ChildBorderSize       = 1.0f;
-    s.PopupBorderSize       = 1.0f;
-    s.FrameBorderSize       = 1.0f;
+    // ── Geometry — 2026 modern, ergonomic, easy to click ────────────────
+    s.WindowPadding         = ImVec2(0, 0);    // we own the layout
+    s.FramePadding          = ImVec2(12, 8);   // Generous click targets
+    s.ItemSpacing           = ImVec2(10, 10);  // Clear separation between items
+    s.ItemInnerSpacing      = ImVec2(8, 6);    // Readable inner spacing
+    s.TouchExtraPadding     = ImVec2(4, 4);    // Larger hitbox for all widgets
+    s.IndentSpacing         = 18.0f;           // Clear hierarchy
+    s.ScrollbarSize         = 10.0f;           // Easy to grab scrollbar
+    s.GrabMinSize           = 14.0f;           // Much easier to grab sliders
+    s.WindowBorderSize      = 0.0f;            // Clean borderless
+    s.ChildBorderSize       = 0.0f;            // No inner borders
+    s.PopupBorderSize       = 1.0f;            // Keep popup border for clarity
+    s.FrameBorderSize       = 0.0f;            // Clean inputs
     s.TabBorderSize         = 0.0f;
 
-    s.WindowRounding        = 14.0f;
-    s.ChildRounding         = size::radius_card;
-    s.PopupRounding         = size::radius_card;
-    s.FrameRounding         = size::radius_input;
-    s.GrabRounding          = 4.0f;
-    s.TabRounding           = 0.0f;
-    s.ScrollbarRounding     = 1.0f;
+    s.WindowRounding        = 16.0f;           // Smooth modern curves
+    s.ChildRounding         = 12.0f;           // Consistent rounding
+    s.PopupRounding         = 12.0f;
+    s.FrameRounding         = 8.0f;            // Soft input fields
+    s.GrabRounding          = 8.0f;            // Pill-shaped slider grab
+    s.TabRounding           = 8.0f;            // Rounded tabs
+    s.ScrollbarRounding     = 5.0f;            // Smooth scrollbar
 
     s.WindowTitleAlign      = ImVec2(0.0f, 0.5f);
     s.ButtonTextAlign       = ImVec2(0.5f, 0.5f);

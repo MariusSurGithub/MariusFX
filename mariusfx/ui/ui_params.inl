@@ -138,6 +138,7 @@ void pl_draw_param_editor(mfx::runtime *rt, ImVec2 origin, float width, float he
                 [](effect_runtime *r, effect_uniform_variable v) {
                     r->reset_uniform_value(v);
                 });
+            rt->save_current_preset();
             g_last_change_time = ImGui::GetTime();
         }
         rx = nx;
